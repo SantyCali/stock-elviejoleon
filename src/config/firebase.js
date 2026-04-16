@@ -3,12 +3,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: 'PONER_API_KEY',
-  authDomain: 'PONER_AUTH_DOMAIN',
-  projectId: 'PONER_PROJECT_ID',
-  storageBucket: 'PONER_STORAGE_BUCKET',
-  messagingSenderId: 'PONER_MESSAGING_SENDER_ID',
-  appId: 'PONER_APP_ID',
+  apiKey: 'AIzaSyCTu0d-iuKL-21Hk9n0_Giq9KKcB5zS1Rk',
+  authDomain: 'stock-el-viejo-leon.firebaseapp.com',
+  projectId: 'stock-el-viejo-leon',
+  storageBucket: 'stock-el-viejo-leon.firebasestorage.app',
+  messagingSenderId: '991613535410',
+  appId: '1:991613535410:web:500707837c00b0374735ab',
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
