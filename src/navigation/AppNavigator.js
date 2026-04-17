@@ -7,6 +7,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ProviderScreen from '../screens/ProviderScreen';
 import NewOrderScreen from '../screens/NewOrderScreen';
 import OrderHistoryScreen from '../screens/OrderHistoryScreen';
+import ProvidersListScreen from '../screens/ProvidersListScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -14,7 +15,7 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Home"
+        initialRouteName="Login"
         screenOptions={{
           headerTitleAlign: 'center',
           contentStyle: { backgroundColor: '#f6f7fb' },
@@ -44,6 +45,11 @@ export default function AppNavigator() {
           name="OrderHistory"
           component={OrderHistoryScreen}
           options={{ title: 'Historial' }}
+        />
+        <Stack.Screen
+          name="ProvidersList"
+          component={ProvidersListScreen}
+          options={{ title: 'Ver proveedores' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

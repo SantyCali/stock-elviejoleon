@@ -10,25 +10,50 @@ import {
 export default function ProviderScreen({ route, navigation }) {
   const { provider } = route.params;
 
+  const totalProducts =
+    provider.categories?.reduce(
+      (acc, category) => acc + category.products.length,
+      0
+    ) || 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.headerCard}>
         <Text style={styles.title}>{provider.name}</Text>
-        <Text style={styles.subtitle}>Día asignado: {provider.day}</Text>
+
+        {!!provider.alias?.length && (
+          <Text style={styles.subtitle}>
+            También figura como: {provider.alias.join(', ')}
+          </Text>
+        )}
+
+        <Text style={styles.subtitle}>
+          Días: {provider.days?.join(', ')}
+        </Text>
+
+        <Text style={styles.subtitle}>
+          Total de productos: {totalProducts}
+        </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Productos</Text>
+      <Text style={styles.sectionTitle}>Categorías</Text>
 
       <FlatList
-        data={provider.products}
-        keyExtractor={(item) => item.id}
+        data={provider.categories || []}
+        keyExtractor={(item) => item.name}
         contentContainerStyle={{ paddingBottom: 16 }}
+        ListEmptyComponent={
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>
+              Este proveedor todavía no tiene productos cargados.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => (
-          <View style={styles.productCard}>
-            <Text style={styles.productName}>{item.name}</Text>
-            <Text style={styles.productText}>Stock actual: {item.stock}</Text>
-            <Text style={styles.productText}>
-              Sugerido último pedido: {item.suggested}
+          <View style={styles.categoryCard}>
+            <Text style={styles.categoryTitle}>{item.name}</Text>
+            <Text style={styles.categoryCount}>
+              Productos: {item.products.length}
             </Text>
           </View>
         )}
@@ -38,7 +63,7 @@ export default function ProviderScreen({ route, navigation }) {
         style={styles.button}
         onPress={() => navigation.navigate('NewOrder', { provider })}
       >
-        <Text style={styles.buttonText}>Hacer pedido</Text>
+        <Text style={styles.buttonText}>Cargar stock y pedido</Text>
       </Pressable>
     </View>
   );
@@ -60,10 +85,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#111827',
+    marginBottom: 6,
   },
   subtitle: {
     color: '#6b7280',
-    marginTop: 4,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 18,
@@ -71,21 +97,28 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 10,
   },
-  productCard: {
+  categoryCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
   },
-  productName: {
+  categoryTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 6,
   },
-  productText: {
+  categoryCount: {
     color: '#4b5563',
-    marginBottom: 2,
+  },
+  emptyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyText: {
+    color: '#4b5563',
   },
   button: {
     backgroundColor: '#111827',
