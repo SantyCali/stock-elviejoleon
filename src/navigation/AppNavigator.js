@@ -21,36 +21,12 @@ export default function AppNavigator() {
           contentStyle: { backgroundColor: '#f6f7fb' },
         }}
       >
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{ title: 'Ingresar' }}
-        />
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: 'El Viejo León' }}
-        />
-        <Stack.Screen
-          name="ProvidersList"
-          component={ProvidersListScreen}
-          options={{ title: 'Ver proveedores' }}
-        />
-        <Stack.Screen
-          name="Provider"
-          component={ProviderScreen}
-          options={{ title: 'Proveedor' }}
-        />
-        <Stack.Screen
-          name="NewOrder"
-          component={NewOrderScreen}
-          options={{ title: 'Nuevo pedido' }}
-        />
-        <Stack.Screen
-          name="OrderHistory"
-          component={OrderHistoryScreen}
-          options={{ title: 'Historial' }}
-        />
+        <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Ingresar' }} />
+        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'El Viejo León' }} />
+        <Stack.Screen name="ProvidersList" component={ProvidersListScreen} options={{ title: 'Ver proveedores' }} />
+        <Stack.Screen name="Provider" component={ProviderScreen} options={{ title: 'Proveedor' }} />
+        <Stack.Screen name="NewOrder" component={NewOrderScreen} options={{ title: 'Nuevo pedido' }} />
+        <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} options={{ title: 'Historial' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
