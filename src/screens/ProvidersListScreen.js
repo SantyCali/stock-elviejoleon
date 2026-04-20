@@ -46,9 +46,7 @@ export default function ProvidersListScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Proveedores cargados</Text>
-      <Text style={styles.subtitle}>
-        Tocá uno para ver sus productos
-      </Text>
+      <Text style={styles.subtitle}>Tocá uno para ver sus productos</Text>
 
       <FlatList
         data={providers}
@@ -72,6 +70,12 @@ export default function ProvidersListScreen({ navigation }) {
             <Text style={styles.info}>
               Frecuencia: {item.frequency || 'No definida'}
             </Text>
+
+            {!!item.categories?.length && (
+              <Text style={styles.info}>
+                Categorías: {item.categories.length}
+              </Text>
+            )}
 
             {item.isJoke && (
               <Text style={styles.joke}>Proveedor humorístico 😎</Text>

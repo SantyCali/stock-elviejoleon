@@ -34,6 +34,13 @@ export default function ProviderScreen({ route, navigation }) {
     <View style={styles.container}>
       <View style={styles.headerCard}>
         <Text style={styles.title}>{provider.name}</Text>
+
+        {!!provider.alias?.length && (
+          <Text style={styles.subtitle}>
+            También figura como: {provider.alias.join(', ')}
+          </Text>
+        )}
+
         <Text style={styles.subtitle}>Días: {provider.days?.join(', ')}</Text>
       </View>
 
@@ -52,7 +59,7 @@ export default function ProviderScreen({ route, navigation }) {
           ListEmptyComponent={
             <View style={styles.emptyBox}>
               <Text style={styles.emptyText}>
-                Este proveedor todavía no tiene productos cargados.
+                Todavía no cargamos los productos de este proveedor en Firebase.
               </Text>
             </View>
           }
@@ -91,10 +98,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#111827',
+    marginBottom: 6,
   },
   subtitle: {
     color: '#6b7280',
-    marginTop: 4,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 18,
