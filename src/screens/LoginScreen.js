@@ -9,18 +9,31 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { signInUser } from '../services/authService';
 
 export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Faltan datos', 'Completá email y contraseña.');
+  async function handleLogin() {
+    if (!login.trim() || !password.trim()) {
+      Alert.alert('Faltan datos', 'Completá usuario o email y contraseña.');
       return;
     }
 
-    navigation.replace('Home');
+    try {
+      setLoading(true);
+      await signInUser(login, password);
+    } catch (error) {
+      console.log(error);
+      Alert.alert(
+        'Error al ingresar',
+        'Revisá el usuario/email y la contraseña.'
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -30,15 +43,14 @@ export default function LoginScreen({ navigation }) {
     >
       <View style={styles.card}>
         <Text style={styles.title}>El Viejo León</Text>
-        <Text style={styles.subtitle}>Ingresá para gestionar pedidos</Text>
+        <Text style={styles.subtitle}>Ingresá a tu cuenta</Text>
 
         <TextInput
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
+          placeholder="Nombre de usuario o email"
+          value={login}
+          onChangeText={setLogin}
           style={styles.input}
           autoCapitalize="none"
-          keyboardType="email-address"
         />
 
         <TextInput
@@ -49,8 +61,21 @@ export default function LoginScreen({ navigation }) {
           secureTextEntry
         />
 
-        <Pressable style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Entrar</Text>
+        <Pressable
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? 'Ingresando...' : 'Entrar'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.linkButton}
+          onPress={() => navigation.navigate('Register')}
+        >
+          <Text style={styles.linkText}>Crear cuenta</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -68,10 +93,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 18,
     padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
   },
   title: {
     fontSize: 28,
@@ -100,9 +121,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 6,
   },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
   buttonText: {
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  linkButton: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#111827',
+    fontWeight: '700',
   },
 });

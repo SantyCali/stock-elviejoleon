@@ -10,18 +10,18 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
-export async function createOrder(orderData) {
-  const docRef = await addDoc(collection(db, 'orders'), {
-    ...orderData,
+export async function createStockSnapshot(stockData) {
+  const docRef = await addDoc(collection(db, 'stocks'), {
+    ...stockData,
     createdAt: serverTimestamp(),
   });
 
   return docRef.id;
 }
 
-export async function getLastOrderByProvider(providerId) {
+export async function getLatestStockByProvider(providerId) {
   const q = query(
-    collection(db, 'orders'),
+    collection(db, 'stocks'),
     where('providerId', '==', providerId),
     orderBy('createdAt', 'desc'),
     limit(1)

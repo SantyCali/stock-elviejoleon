@@ -74,9 +74,9 @@ export default function ProviderScreen({ route, navigation }) {
 
       <Pressable
         style={styles.button}
-        onPress={() => navigation.navigate('NewOrder', { provider })}
+        onPress={() => navigation.navigate('Stock', { provider })}
       >
-        <Text style={styles.buttonText}>Cargar stock y pedido</Text>
+        <Text style={styles.buttonText}>Cargar stock</Text>
       </Pressable>
     </View>
   );

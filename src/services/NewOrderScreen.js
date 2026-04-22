@@ -20,7 +20,6 @@ export default function NewOrderScreen({ route, navigation }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [stockLoadedBy, setStockLoadedBy] = useState(null);
 
   useEffect(() => {
     loadOrderData();
@@ -49,18 +48,10 @@ export default function NewOrderScreen({ route, navigation }) {
         });
       }
 
-      if (latestStock?.createdByName || latestStock?.createdByUsername) {
-        setStockLoadedBy(
-          latestStock.createdByName || latestStock.createdByUsername
-        );
-      } else {
-        setStockLoadedBy(null);
-      }
-
       const formatted = providerProducts.map((item) => ({
         ...item,
-        hay: stockMap[item.id] ?? null,
-        ultimoPedido: lastOrderMap[item.id] ?? null,
+        hay: stockMap[item.id] ?? '',
+        ultimoPedido: lastOrderMap[item.id] ?? '',
         pedirAhora: '',
       }));
 
@@ -93,8 +84,9 @@ export default function NewOrderScreen({ route, navigation }) {
           productId: item.id,
           productName: item.name,
           category: item.category || '',
-          hay: item.hay,
-          ultimoPedido: item.ultimoPedido,
+          hay: item.hay === '' ? null : Number(item.hay),
+          ultimoPedido:
+            item.ultimoPedido === '' ? null : Number(item.ultimoPedido),
           pedir: Number(item.pedirAhora),
         }));
 
@@ -123,22 +115,6 @@ export default function NewOrderScreen({ route, navigation }) {
     }
   }
 
-  function renderHay(item) {
-    if (item.hay === null || item.hay === undefined) {
-      return `${stockLoadedBy || 'Poro'} todavía no puso stock`;
-    }
-
-    return String(item.hay);
-  }
-
-  function renderUltimoPedido(item) {
-    if (item.ultimoPedido === null || item.ultimoPedido === undefined) {
-      return 'No hay registro';
-    }
-
-    return String(item.ultimoPedido);
-  }
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Hacer pedido - {provider.name}</Text>
@@ -160,16 +136,20 @@ export default function NewOrderScreen({ route, navigation }) {
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Hay:</Text>
-                <Text style={styles.infoValue}>{renderHay(item)}</Text>
+                <Text style={styles.infoValue}>
+                  {item.hay === '' ? '-' : item.hay}
+                </Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Último pedido:</Text>
-                <Text style={styles.infoValue}>{renderUltimoPedido(item)}</Text>
+                <Text style={styles.infoValue}>
+                  {item.ultimoPedido === '' ? '-' : item.ultimoPedido}
+                </Text>
               </View>
 
               <View style={styles.inputBlock}>
-                <Text style={styles.label}>Pedir</Text>
+                <Text style={styles.label}>Pedir ahora</Text>
                 <TextInput
                   style={styles.input}
                   keyboardType="numeric"
@@ -248,7 +228,6 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 14,
     color: '#111827',
-    flex: 1,
   },
   inputBlock: {
     marginTop: 8,

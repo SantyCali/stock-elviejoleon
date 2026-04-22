@@ -10,77 +10,46 @@ import {
   View,
 } from 'react-native';
 import { getProductsByProvider } from '../services/productService';
-import { createOrder, getLastOrderByProvider } from '../services/orderService';
-import { getLatestStockByProvider } from '../services/stockService';
+import { createStockSnapshot } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 
-export default function NewOrderScreen({ route, navigation }) {
+export default function StockScreen({ route, navigation }) {
   const { provider } = route.params;
-
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [stockLoadedBy, setStockLoadedBy] = useState(null);
 
   useEffect(() => {
-    loadOrderData();
+    loadProducts();
   }, []);
 
-  async function loadOrderData() {
+  async function loadProducts() {
     try {
       setLoading(true);
+      const data = await getProductsByProvider(provider.id);
 
-      const providerProducts = await getProductsByProvider(provider.id);
-      const latestStock = await getLatestStockByProvider(provider.id);
-      const lastOrder = await getLastOrderByProvider(provider.id);
-
-      const stockMap = {};
-      const lastOrderMap = {};
-
-      if (latestStock?.items?.length) {
-        latestStock.items.forEach((item) => {
-          stockMap[item.productId] = item.hay;
-        });
-      }
-
-      if (lastOrder?.items?.length) {
-        lastOrder.items.forEach((item) => {
-          lastOrderMap[item.productId] = item.pedir;
-        });
-      }
-
-      if (latestStock?.createdByName || latestStock?.createdByUsername) {
-        setStockLoadedBy(
-          latestStock.createdByName || latestStock.createdByUsername
-        );
-      } else {
-        setStockLoadedBy(null);
-      }
-
-      const formatted = providerProducts.map((item) => ({
+      const formatted = data.map((item) => ({
         ...item,
-        hay: stockMap[item.id] ?? null,
-        ultimoPedido: lastOrderMap[item.id] ?? null,
-        pedirAhora: '',
+        hay: '',
       }));
 
       setProducts(formatted);
     } catch (error) {
-      console.log('Error cargando datos de pedido:', error);
+      console.log('Error cargando productos para stock:', error);
     } finally {
       setLoading(false);
     }
   }
 
-  function updatePedirAhora(productId, value) {
+  function updateHay(productId, value) {
     setProducts((prev) =>
       prev.map((item) =>
-        item.id === productId ? { ...item, pedirAhora: value } : item
+        item.id === productId ? { ...item, hay: value } : item
       )
     );
   }
 
-  async function handleSaveOrder() {
+  async function handleSaveStock() {
     try {
       setSaving(true);
 
@@ -88,65 +57,46 @@ export default function NewOrderScreen({ route, navigation }) {
       const profile = currentUser ? await getUserProfile(currentUser.uid) : null;
 
       const itemsToSave = products
-        .filter((item) => item.pedirAhora.trim() !== '')
+        .filter((item) => item.hay.trim() !== '')
         .map((item) => ({
           productId: item.id,
           productName: item.name,
           category: item.category || '',
-          hay: item.hay,
-          ultimoPedido: item.ultimoPedido,
-          pedir: Number(item.pedirAhora),
+          hay: Number(item.hay),
         }));
 
       if (itemsToSave.length === 0) {
-        Alert.alert('Ojo', 'Cargá al menos un producto para pedir.');
+        Alert.alert('Ojo', 'Cargá al menos un stock antes de guardar.');
         return;
       }
 
-      await createOrder({
+      await createStockSnapshot({
         providerId: provider.id,
         providerName: provider.name,
-        status: 'pendiente',
         createdByUid: currentUser?.uid || null,
         createdByName: profile?.name || null,
         createdByUsername: profile?.username || null,
         items: itemsToSave,
       });
 
-      Alert.alert('Pedido guardado', 'El pedido se guardó correctamente.');
+      Alert.alert('Listo', 'El stock se guardó correctamente.');
       navigation.goBack();
     } catch (error) {
-      console.log('Error guardando pedido:', error);
-      Alert.alert('Error', 'No se pudo guardar el pedido.');
+      console.log('Error guardando stock:', error);
+      Alert.alert('Error', 'No se pudo guardar el stock.');
     } finally {
       setSaving(false);
     }
   }
 
-  function renderHay(item) {
-    if (item.hay === null || item.hay === undefined) {
-      return `${stockLoadedBy || 'Poro'} todavía no puso stock`;
-    }
-
-    return String(item.hay);
-  }
-
-  function renderUltimoPedido(item) {
-    if (item.ultimoPedido === null || item.ultimoPedido === undefined) {
-      return 'No hay registro';
-    }
-
-    return String(item.ultimoPedido);
-  }
-
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Hacer pedido - {provider.name}</Text>
+      <Text style={styles.title}>Cargar stock - {provider.name}</Text>
 
       {loading ? (
         <View style={styles.loaderBox}>
           <ActivityIndicator size="large" />
-          <Text style={styles.loaderText}>Cargando datos...</Text>
+          <Text style={styles.loaderText}>Cargando productos...</Text>
         </View>
       ) : (
         <FlatList
@@ -158,23 +108,13 @@ export default function NewOrderScreen({ route, navigation }) {
               <Text style={styles.category}>{item.category}</Text>
               <Text style={styles.name}>{item.name}</Text>
 
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Hay:</Text>
-                <Text style={styles.infoValue}>{renderHay(item)}</Text>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Último pedido:</Text>
-                <Text style={styles.infoValue}>{renderUltimoPedido(item)}</Text>
-              </View>
-
               <View style={styles.inputBlock}>
-                <Text style={styles.label}>Pedir</Text>
+                <Text style={styles.label}>Hay</Text>
                 <TextInput
                   style={styles.input}
                   keyboardType="numeric"
-                  value={item.pedirAhora}
-                  onChangeText={(value) => updatePedirAhora(item.id, value)}
+                  value={item.hay}
+                  onChangeText={(value) => updateHay(item.id, value)}
                 />
               </View>
             </View>
@@ -184,11 +124,11 @@ export default function NewOrderScreen({ route, navigation }) {
 
       <Pressable
         style={[styles.button, saving && styles.buttonDisabled]}
-        onPress={handleSaveOrder}
+        onPress={handleSaveStock}
         disabled={saving}
       >
         <Text style={styles.buttonText}>
-          {saving ? 'Guardando...' : 'Guardar pedido'}
+          {saving ? 'Guardando...' : 'Guardar stock'}
         </Text>
       </Pressable>
     </View>
@@ -235,23 +175,8 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 10,
   },
-  infoRow: {
-    flexDirection: 'row',
-    marginBottom: 6,
-  },
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#374151',
-    marginRight: 8,
-  },
-  infoValue: {
-    fontSize: 14,
-    color: '#111827',
-    flex: 1,
-  },
   inputBlock: {
-    marginTop: 8,
+    width: '100%',
   },
   label: {
     fontSize: 12,

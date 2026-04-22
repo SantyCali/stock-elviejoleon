@@ -53,7 +53,7 @@ export default function HomeScreen({ navigation }) {
 
       <Pressable
         style={styles.providersButton}
-        onPress={() => navigation.navigate('ProvidersList')}
+        onPress={() => navigation.navigate('Ver proveedores')}
       >
         <Text style={styles.providersButtonText}>Ver todos los proveedores</Text>
       </Pressable>
