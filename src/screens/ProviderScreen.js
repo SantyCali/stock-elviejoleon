@@ -8,23 +8,32 @@ import {
   View,
 } from 'react-native';
 import { getProductsByProvider } from '../services/productService';
+import { getCurrentUser, getUserProfile } from '../services/authService';
 
 export default function ProviderScreen({ route, navigation }) {
   const { provider } = route.params;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
-    loadProducts();
+    loadData();
   }, []);
 
-  async function loadProducts() {
+  async function loadData() {
     try {
       setLoading(true);
+
       const data = await getProductsByProvider(provider.id);
       setProducts(data);
+
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        const profile = await getUserProfile(currentUser.uid);
+        setUserRole(profile?.role || null);
+      }
     } catch (error) {
-      console.log('Error cargando productos:', error);
+      console.log('Error cargando proveedor:', error);
     } finally {
       setLoading(false);
     }
@@ -72,12 +81,23 @@ export default function ProviderScreen({ route, navigation }) {
         />
       )}
 
-      <Pressable
-        style={styles.button}
-        onPress={() => navigation.navigate('Stock', { provider })}
-      >
-        <Text style={styles.buttonText}>Cargar stock</Text>
-      </Pressable>
+      <View style={styles.buttonsContainer}>
+        <Pressable
+          style={styles.button}
+          onPress={() => navigation.navigate('Stock', { provider })}
+        >
+          <Text style={styles.buttonText}>Cargar stock</Text>
+        </Pressable>
+
+        {userRole === 'jefe' && (
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => navigation.navigate('NewOrder', { provider })}
+          >
+            <Text style={styles.secondaryButtonText}>Hacer pedido</Text>
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -142,6 +162,10 @@ const styles = StyleSheet.create({
   productText: {
     color: '#4b5563',
   },
+  buttonsContainer: {
+    marginTop: 8,
+    gap: 10,
+  },
   button: {
     backgroundColor: '#111827',
     borderRadius: 14,
@@ -150,6 +174,19 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  secondaryButton: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#111827',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#111827',
     fontWeight: '700',
     fontSize: 15,
   },
