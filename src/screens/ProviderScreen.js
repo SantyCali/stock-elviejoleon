@@ -1,3 +1,4 @@
+//ProviderScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +19,7 @@ export default function ProviderScreen({ route, navigation }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [provider.id]);
 
   async function loadData() {
     try {

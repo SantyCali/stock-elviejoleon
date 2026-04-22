@@ -18,7 +18,7 @@ export default function StockScreen({ route }) {
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [provider.id]);
 
   async function loadProducts() {
     try {

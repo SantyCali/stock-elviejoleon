@@ -24,7 +24,7 @@ export default function NewOrderScreen({ route, navigation }) {
 
   useEffect(() => {
     loadOrderData();
-  }, []);
+  }, [provider.id]);
 
   async function loadOrderData() {
     try {
