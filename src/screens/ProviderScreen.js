@@ -77,12 +77,23 @@ export default function ProviderScreen({ route, navigation }) {
         <Text style={styles.subtitle}>Días: {provider.days?.join(', ')}</Text>
 
         {userRole === 'jefe' && (
-          <Pressable
-            style={styles.addButton}
-            onPress={() => navigation.navigate('AddProduct', { provider })}
-          >
-            <Text style={styles.addButtonText}>+ Agregar artículo</Text>
-          </Pressable>
+          <View style={styles.topButtonsRow}>
+            <Pressable
+              style={styles.smallButton}
+              onPress={() => navigation.navigate('AddProduct', { provider })}
+            >
+              <Text style={styles.smallButtonText}>+ Agregar artículo</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.smallButton}
+              onPress={() =>
+                navigation.navigate('ProviderOrderHistory', { provider })
+              }
+            >
+              <Text style={styles.smallButtonText}>Últimos 5 pedidos</Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
@@ -162,20 +173,27 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 4,
   },
-  addButton: {
-    alignSelf: 'flex-start',
+  topButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 10,
+  },
+  smallButton: {
+    flex: 1,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#111827',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addButtonText: {
+  smallButtonText: {
     color: '#111827',
     fontWeight: '700',
     fontSize: 13,
+    textAlign: 'center',
   },
   sectionTitle: {
     fontSize: 18,

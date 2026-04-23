@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getRecentOrders } from '../services/orderService';
+import { getRecentOrdersByProvider } from '../services/orderService';
 import { Ionicons } from '@expo/vector-icons';
 
 function formatCreatedAt(createdAt) {
@@ -36,23 +36,24 @@ function buildPreview(items = []) {
     .join(', ');
 }
 
-export default function OrderHistoryScreen({ navigation }) {
+export default function ProviderOrderHistoryScreen({ route, navigation }) {
+  const { provider } = route.params;
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       loadOrders();
-    }, [])
+    }, [provider.id])
   );
 
   async function loadOrders() {
     try {
       setLoading(true);
-      const data = await getRecentOrders(5);
+      const data = await getRecentOrdersByProvider(provider.id, 5);
       setOrders(data);
     } catch (error) {
-      console.log('Error cargando historial:', error);
+      console.log('Error cargando historial del proveedor:', error);
     } finally {
       setLoading(false);
     }
@@ -62,14 +63,15 @@ export default function OrderHistoryScreen({ navigation }) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" />
-        <Text style={styles.loaderText}>Cargando historial...</Text>
+        <Text style={styles.loaderText}>Cargando pedidos...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Últimos pedidos</Text>
+      <Text style={styles.title}>Últimos 5 pedidos</Text>
+      <Text style={styles.subtitle}>{provider.name}</Text>
 
       <FlatList
         data={orders}
@@ -78,7 +80,7 @@ export default function OrderHistoryScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>
-              Todavía no hay pedidos guardados.
+              Todavía no hay pedidos guardados para este proveedor.
             </Text>
           </View>
         }
@@ -88,7 +90,6 @@ export default function OrderHistoryScreen({ navigation }) {
               style={styles.cardContent}
               onPress={() => navigation.navigate('OrderDetail', { order: item })}
             >
-              <Text style={styles.providerName}>{item.providerName}</Text>
               <Text style={styles.dateText}>{formatCreatedAt(item.createdAt)}</Text>
               <Text style={styles.previewText}>{buildPreview(item.items)}</Text>
             </Pressable>
@@ -126,6 +127,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: '#111827',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#6b7280',
     marginBottom: 16,
   },
   emptyBox: {
@@ -148,15 +154,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 12,
   },
-  providerName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 6,
-  },
   dateText: {
     fontSize: 14,
-    color: '#6b7280',
+    fontWeight: '700',
+    color: '#111827',
     marginBottom: 6,
   },
   previewText: {

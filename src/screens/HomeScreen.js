@@ -57,14 +57,6 @@ export default function HomeScreen({ navigation }) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '');
 
-      console.log(
-        'PROVIDER:',
-        provider.name,
-        'DAYS:',
-        normalizedDays,
-        'TODAY:',
-        normalizedToday
-      );
 
       return normalizedDays.includes(normalizedToday);
     });

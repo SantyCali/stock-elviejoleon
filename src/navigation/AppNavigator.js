@@ -10,9 +10,11 @@ import ProvidersListScreen from '../screens/ProvidersListScreen';
 import ProviderScreen from '../screens/ProviderScreen';
 import StockScreen from '../screens/StockScreen';
 import NewOrderScreen from '../screens/NewOrderScreen';
-import { observeAuthState } from '../services/authService';
 import AddProductScreen from '../screens/AddProductScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
+import ShareOrderScreen from '../screens/ShareOrderScreen';
+import ProviderOrderHistoryScreen from '../screens/ProviderOrderHistoryScreen';
+import { observeAuthState } from '../services/authService';
 
 const Stack = createNativeStackNavigator();
 
@@ -83,11 +85,6 @@ export default function AppNavigator() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
-              name="OrderDetail"
-              component={OrderDetailScreen}
-              options={{ title: 'Detalle del pedido' }}
-            />
-            <Stack.Screen
               name="ProvidersList"
               component={ProvidersListScreen}
               options={{ title: 'Ver proveedores' }}
@@ -111,6 +108,21 @@ export default function AppNavigator() {
               name="NewOrder"
               component={NewOrderScreen}
               options={{ title: 'Nuevo pedido' }}
+            />
+            <Stack.Screen
+              name="OrderDetail"
+              component={OrderDetailScreen}
+              options={{ title: 'Detalle del pedido' }}
+            />
+            <Stack.Screen
+              name="ShareOrder"
+              component={ShareOrderScreen}
+              options={{ title: 'Compartir pedido' }}
+            />
+            <Stack.Screen
+              name="ProviderOrderHistory"
+              component={ProviderOrderHistoryScreen}
+              options={{ title: 'Últimos 5 pedidos' }}
             />
           </>
         )}

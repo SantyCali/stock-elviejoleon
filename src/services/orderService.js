@@ -56,6 +56,22 @@ export async function getRecentOrders(limitCount = 5) {
   }));
 }
 
+export async function getRecentOrdersByProvider(providerId, limitCount = 5) {
+  const q = query(
+    collection(db, 'orders'),
+    where('providerId', '==', providerId),
+    orderBy('createdAt', 'desc'),
+    limit(limitCount)
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((docItem) => ({
+    id: docItem.id,
+    ...docItem.data(),
+  }));
+}
+
 async function keepOnlyLastFiveOrdersByProvider(providerId) {
   const q = query(
     collection(db, 'orders'),

@@ -80,6 +80,18 @@ export default function NewOrderScreen({ route, navigation }) {
     );
   }
 
+  function handleUseLastOrder() {
+    setProducts((prev) =>
+      prev.map((item) => ({
+        ...item,
+        pedirAhora:
+          item.ultimoPedido !== null && item.ultimoPedido !== undefined
+            ? String(item.ultimoPedido)
+            : item.pedirAhora,
+      }))
+    );
+  }
+
   async function handleSaveOrder() {
     try {
       setSaving(true);
@@ -103,7 +115,7 @@ export default function NewOrderScreen({ route, navigation }) {
         return;
       }
 
-      await createOrder({
+      const orderId = await createOrder({
         providerId: provider.id,
         providerName: provider.name,
         status: 'pendiente',
@@ -113,8 +125,28 @@ export default function NewOrderScreen({ route, navigation }) {
         items: itemsToSave,
       });
 
-      Alert.alert('Pedido guardado', 'El pedido se guardó correctamente.');
-      navigation.goBack();
+      const orderToShare = {
+        id: orderId,
+        providerId: provider.id,
+        providerName: provider.name,
+        createdByUid: currentUser?.uid || null,
+        createdByName: profile?.name || null,
+        createdByUsername: profile?.username || null,
+        createdAt: new Date().toISOString(),
+        status: 'pendiente',
+        items: itemsToSave,
+      };
+
+      Alert.alert(
+        'Pedido guardado',
+        'El pedido se guardó correctamente.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('ShareOrder', { order: orderToShare }),
+          },
+        ]
+      );
     } catch (error) {
       console.log('Error guardando pedido:', error);
       Alert.alert('Error', 'No se pudo guardar el pedido.');
@@ -166,6 +198,12 @@ export default function NewOrderScreen({ route, navigation }) {
     <View style={styles.container}>
       <Text style={styles.title}>Hacer pedido - {provider.name}</Text>
 
+      {!loading && (
+        <Pressable style={styles.baseButton} onPress={handleUseLastOrder}>
+          <Text style={styles.baseButtonText}>Usar último pedido como base</Text>
+        </Pressable>
+      )}
+
       {loading ? (
         <View style={styles.loaderBox}>
           <ActivityIndicator size="large" />
@@ -181,7 +219,7 @@ export default function NewOrderScreen({ route, navigation }) {
         <FlatList
           data={groupedProducts}
           keyExtractor={(item) => item.category}
-          contentContainerStyle={{ paddingBottom: 300 }}
+          contentContainerStyle={{ paddingBottom: 140 }}
           renderItem={({ item }) => (
             <View style={styles.categoryCard}>
               <Text style={styles.categoryTitle}>{item.category}</Text>
@@ -249,6 +287,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
     marginBottom: 12,
+  },
+  baseButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#111827',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  baseButtonText: {
+    color: '#111827',
+    fontWeight: '700',
+    fontSize: 13,
   },
   loaderBox: {
     flex: 1,
