@@ -1,41 +1,91 @@
-import React from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { getRecentOrders } from '../services/orderService';
 
-const MOCK_HISTORY = [
-  {
-    id: 'h1',
-    provider: 'Sancor',
-    date: '2026-04-10',
-    summary: 'Leche entera x12, Yogur vainilla x10',
-  },
-  {
-    id: 'h2',
-    provider: 'Coca Cola',
-    date: '2026-04-08',
-    summary: 'Coca 2.25L x15, Sprite 2.25L x8',
-  },
-  {
-    id: 'h3',
-    provider: 'Serenísima',
-    date: '2026-04-05',
-    summary: 'Crema x5, Manteca x6',
-  },
-];
+function formatCreatedAt(createdAt) {
+  if (!createdAt) return 'Sin fecha';
 
-export default function OrderHistoryScreen() {
+  if (typeof createdAt === 'string') {
+    return createdAt;
+  }
+
+  if (createdAt?.toDate) {
+    return createdAt.toDate().toLocaleDateString('es-AR');
+  }
+
+  return 'Sin fecha';
+}
+
+function buildPreview(items = []) {
+  return items
+    .slice(0, 2)
+    .map((item) => `${item.productName} ${item.pedir}`)
+    .join(', ');
+}
+
+export default function OrderHistoryScreen({ navigation }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [])
+  );
+
+  async function loadOrders() {
+    try {
+      setLoading(true);
+      const data = await getRecentOrders(5);
+      setOrders(data);
+    } catch (error) {
+      console.log('Error cargando historial:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loaderText}>Cargando historial...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Últimos pedidos</Text>
 
       <FlatList
-        data={MOCK_HISTORY}
+        data={orders}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.provider}>{item.provider}</Text>
-            <Text style={styles.date}>{item.date}</Text>
-            <Text style={styles.summary}>{item.summary}</Text>
+        contentContainerStyle={{ paddingBottom: 20 }}
+        ListEmptyComponent={
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>
+              Todavía no hay pedidos guardados.
+            </Text>
           </View>
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            style={styles.card}
+            onPress={() => navigation.navigate('OrderDetail', { order: item })}
+          >
+            <Text style={styles.providerName}>{item.providerName}</Text>
+            <Text style={styles.dateText}>{formatCreatedAt(item.createdAt)}</Text>
+            <Text style={styles.previewText}>{buildPreview(item.items)}</Text>
+          </Pressable>
         )}
       />
     </View>
@@ -43,35 +93,54 @@ export default function OrderHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loaderContainer: {
     flex: 1,
-    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#f6f7fb',
   },
+  loaderText: {
+    marginTop: 10,
+    color: '#4b5563',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#f6f7fb',
+    padding: 16,
+  },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
     color: '#111827',
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  emptyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyText: {
+    color: '#4b5563',
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     marginBottom: 12,
   },
-  provider: {
-    fontSize: 16,
-    fontWeight: '700',
+  providerName: {
+    fontSize: 18,
+    fontWeight: '800',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  date: {
+  dateText: {
+    fontSize: 14,
     color: '#6b7280',
     marginBottom: 6,
   },
-  summary: {
-    color: '#374151',
-    lineHeight: 20,
+  previewText: {
+    fontSize: 14,
+    color: '#4b5563',
   },
 });

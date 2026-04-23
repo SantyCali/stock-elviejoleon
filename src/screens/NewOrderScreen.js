@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -95,7 +95,7 @@ export default function NewOrderScreen({ route, navigation }) {
           category: item.category || '',
           hay: item.hay,
           ultimoPedido: item.ultimoPedido,
-          pedir: Number(item.pedirAhora),
+          pedir: item.pedirAhora.trim(),
         }));
 
       if (itemsToSave.length === 0) {
@@ -139,6 +139,29 @@ export default function NewOrderScreen({ route, navigation }) {
     return String(item.ultimoPedido);
   }
 
+  const groupedProducts = useMemo(() => {
+    const groups = {};
+
+    products.forEach((product) => {
+      const category = product.category?.trim() || 'Sin categoría';
+
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+
+      groups[category].push(product);
+    });
+
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map((category) => ({
+        category,
+        items: groups[category].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        ),
+      }));
+  }, [products]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Hacer pedido - {provider.name}</Text>
@@ -148,35 +171,55 @@ export default function NewOrderScreen({ route, navigation }) {
           <ActivityIndicator size="large" />
           <Text style={styles.loaderText}>Cargando datos...</Text>
         </View>
+      ) : groupedProducts.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>
+            Este proveedor todavía no tiene productos cargados.
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={products}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          data={groupedProducts}
+          keyExtractor={(item) => item.category}
+          contentContainerStyle={{ paddingBottom: 300 }}
           renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.category}>{item.category}</Text>
-              <Text style={styles.name}>{item.name}</Text>
+            <View style={styles.categoryCard}>
+              <Text style={styles.categoryTitle}>{item.category}</Text>
 
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Hay:</Text>
-                <Text style={styles.infoValue}>{renderHay(item)}</Text>
-              </View>
+              {item.items.map((product, productIndex) => (
+                <View key={product.id} style={styles.productCard}>
+                  <Text style={styles.name}>{product.name}</Text>
 
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Último pedido:</Text>
-                <Text style={styles.infoValue}>{renderUltimoPedido(item)}</Text>
-              </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Hay:</Text>
+                    <Text style={styles.infoValue}>{renderHay(product)}</Text>
+                  </View>
 
-              <View style={styles.inputBlock}>
-                <Text style={styles.label}>Pedir</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={item.pedirAhora}
-                  onChangeText={(value) => updatePedirAhora(item.id, value)}
-                />
-              </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Último pedido:</Text>
+                    <Text style={styles.infoValue}>
+                      {renderUltimoPedido(product)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.inputBlock}>
+                    <Text style={styles.label}>Pedir</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={
+                        item.category === groupedProducts[0]?.category &&
+                        productIndex === 0
+                          ? 'Ej: 7 packs'
+                          : ''
+                      }
+                      value={product.pedirAhora}
+                      onChangeText={(value) =>
+                        updatePedirAhora(product.id, value)
+                      }
+                    />
+                  </View>
+                </View>
+              ))}
             </View>
           )}
         />
@@ -216,24 +259,40 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#4b5563',
   },
-  card: {
+  emptyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyText: {
+    color: '#4b5563',
+  },
+  categoryCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  category: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6b7280',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  name: {
+  categoryTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#111827',
     marginBottom: 10,
+    textTransform: 'capitalize',
+  },
+  productCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
   },
   infoRow: {
     flexDirection: 'row',

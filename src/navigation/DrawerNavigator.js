@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { createDrawerNavigator, DrawerContentScrollView } from '@react-navigation/drawer';
+import {
+  createDrawerNavigator,
+  DrawerContentScrollView,
+} from '@react-navigation/drawer';
 
 import HomeScreen from '../screens/HomeScreen';
-import ProvidersListScreen from '../screens/ProvidersListScreen';
-import ProviderScreen from '../screens/ProviderScreen';
-import StockScreen from '../screens/StockScreen';
-import NewOrderScreen from '../screens/NewOrderScreen';
 import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 import {
   getCurrentUser,
@@ -86,13 +85,6 @@ function CustomDrawerContent(props) {
 
         <Pressable
           style={styles.item}
-          onPress={() => props.navigation.navigate('Ver proveedores')}
-        >
-          <Text style={styles.itemText}>Ver proveedores</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.item}
           onPress={() => props.navigation.navigate('Historial')}
         >
           <Text style={styles.itemText}>Historial</Text>
@@ -109,12 +101,20 @@ function CustomDrawerContent(props) {
 export default function DrawerNavigator() {
   return (
     <Drawer.Navigator
+      initialRouteName="Inicio"
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerTitleAlign: 'center',
         drawerPosition: 'left',
         drawerType: 'slide',
         sceneStyle: { backgroundColor: '#f6f7fb' },
+        headerStyle: {
+          backgroundColor: '#ffffff',
+        },
+        headerTitleStyle: {
+          fontWeight: '800',
+          color: '#111827',
+        },
       }}
     >
       <Drawer.Screen
@@ -123,38 +123,9 @@ export default function DrawerNavigator() {
         options={{ title: 'El Viejo León' }}
       />
       <Drawer.Screen
-        name="Ver proveedores"
-        component={ProvidersListScreen}
-        options={{ title: 'Ver proveedores' }}
-      />
-      <Drawer.Screen
         name="Historial"
         component={OrderHistoryScreen}
         options={{ title: 'Historial' }}
-      />
-      <Drawer.Screen
-        name="Provider"
-        component={ProviderScreen}
-        options={{
-          title: 'Proveedor',
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen
-        name="Stock"
-        component={StockScreen}
-        options={{
-          title: 'Cargar stock',
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen
-        name="NewOrder"
-        component={NewOrderScreen}
-        options={{
-          title: 'Nuevo pedido',
-          drawerItemStyle: { display: 'none' },
-        }}
       />
     </Drawer.Navigator>
   );

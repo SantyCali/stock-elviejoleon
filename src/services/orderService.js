@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
   orderBy,
@@ -15,6 +17,8 @@ export async function createOrder(orderData) {
     ...orderData,
     createdAt: serverTimestamp(),
   });
+
+  await keepOnlyLastFiveOrdersByProvider(orderData.providerId);
 
   return docRef.id;
 }
@@ -35,4 +39,37 @@ export async function getLastOrderByProvider(providerId) {
     id: snapshot.docs[0].id,
     ...snapshot.docs[0].data(),
   };
+}
+
+export async function getRecentOrders(limitCount = 5) {
+  const q = query(
+    collection(db, 'orders'),
+    orderBy('createdAt', 'desc'),
+    limit(limitCount)
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((docItem) => ({
+    id: docItem.id,
+    ...docItem.data(),
+  }));
+}
+
+async function keepOnlyLastFiveOrdersByProvider(providerId) {
+  const q = query(
+    collection(db, 'orders'),
+    where('providerId', '==', providerId),
+    orderBy('createdAt', 'desc')
+  );
+
+  const snapshot = await getDocs(q);
+
+  if (snapshot.docs.length <= 5) return;
+
+  const docsToDelete = snapshot.docs.slice(5);
+
+  for (const docItem of docsToDelete) {
+    await deleteDoc(doc(db, 'orders', docItem.id));
+  }
 }

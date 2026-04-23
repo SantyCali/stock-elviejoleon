@@ -10,6 +10,14 @@ import {
 import { getProviders } from '../services/providerService';
 import { getTodayLabel, getTodayName } from '../utils/dates';
 
+function normalizeDayName(day) {
+  return String(day || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 export default function HomeScreen({ navigation }) {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +42,32 @@ export default function HomeScreen({ navigation }) {
   }
 
   const providersToday = useMemo(() => {
-    return providers.filter((provider) => provider.days?.includes(todayName));
+    return providers.filter((provider) => {
+      const normalizedDays = (provider.days || []).map((day) =>
+        String(day || '')
+          .toLowerCase()
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+      );
+
+      const normalizedToday = String(todayName || '')
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+      console.log(
+        'PROVIDER:',
+        provider.name,
+        'DAYS:',
+        normalizedDays,
+        'TODAY:',
+        normalizedToday
+      );
+
+      return normalizedDays.includes(normalizedToday);
+    });
   }, [providers, todayName]);
 
   if (loading) {
@@ -53,7 +86,7 @@ export default function HomeScreen({ navigation }) {
 
       <Pressable
         style={styles.providersButton}
-        onPress={() => navigation.navigate('Ver proveedores')}
+        onPress={() => navigation.navigate('ProvidersList')}
       >
         <Text style={styles.providersButtonText}>Ver todos los proveedores</Text>
       </Pressable>

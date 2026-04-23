@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +21,7 @@ export default function StockScreen({ route, navigation }) {
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [provider.id]);
 
   async function loadProducts() {
     try {
@@ -89,6 +89,29 @@ export default function StockScreen({ route, navigation }) {
     }
   }
 
+  const groupedProducts = useMemo(() => {
+    const groups = {};
+
+    products.forEach((product) => {
+      const category = product.category?.trim() || 'Sin categoría';
+
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+
+      groups[category].push(product);
+    });
+
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map((category) => ({
+        category,
+        items: groups[category].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        ),
+      }));
+  }, [products]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Cargar stock - {provider.name}</Text>
@@ -98,25 +121,36 @@ export default function StockScreen({ route, navigation }) {
           <ActivityIndicator size="large" />
           <Text style={styles.loaderText}>Cargando productos...</Text>
         </View>
+      ) : groupedProducts.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>
+            Este proveedor todavía no tiene productos cargados.
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={products}
-          keyExtractor={(item) => item.id}
+          data={groupedProducts}
+          keyExtractor={(item) => item.category}
           contentContainerStyle={{ paddingBottom: 20 }}
           renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.category}>{item.category}</Text>
-              <Text style={styles.name}>{item.name}</Text>
+            <View style={styles.categoryCard}>
+              <Text style={styles.categoryTitle}>{item.category}</Text>
 
-              <View style={styles.inputBlock}>
-                <Text style={styles.label}>Hay</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={item.hay}
-                  onChangeText={(value) => updateHay(item.id, value)}
-                />
-              </View>
+              {item.items.map((product) => (
+                <View key={product.id} style={styles.productCard}>
+                  <Text style={styles.name}>{product.name}</Text>
+
+                  <View style={styles.inputBlock}>
+                    <Text style={styles.label}>Hay</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={product.hay}
+                      onChangeText={(value) => updateHay(product.id, value)}
+                    />
+                  </View>
+                </View>
+              ))}
             </View>
           )}
         />
@@ -156,24 +190,40 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#4b5563',
   },
-  card: {
+  emptyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyText: {
+    color: '#4b5563',
+  },
+  categoryCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  category: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6b7280',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  name: {
+  categoryTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#111827',
     marginBottom: 10,
+    textTransform: 'capitalize',
+  },
+  productCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
   },
   inputBlock: {
     width: '100%',

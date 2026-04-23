@@ -1,5 +1,4 @@
-//ProviderScreen.js
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -8,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getProductsByProvider } from '../services/productService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 
@@ -17,9 +17,11 @@ export default function ProviderScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
 
-  useEffect(() => {
-    loadData();
-  }, [provider.id]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [provider.id])
+  );
 
   async function loadData() {
     try {
@@ -40,6 +42,27 @@ export default function ProviderScreen({ route, navigation }) {
     }
   }
 
+  const groupedProducts = useMemo(() => {
+    const groups = {};
+
+    products.forEach((product) => {
+      const category = product.category?.trim() || 'Sin categoría';
+
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+
+      groups[category].push(product);
+    });
+
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map((category) => ({
+        category,
+        items: groups[category].sort((a, b) => a.name.localeCompare(b.name)),
+      }));
+  }, [products]);
+
   return (
     <View style={styles.container}>
       <View style={styles.headerCard}>
@@ -52,31 +75,45 @@ export default function ProviderScreen({ route, navigation }) {
         )}
 
         <Text style={styles.subtitle}>Días: {provider.days?.join(', ')}</Text>
+
+        {userRole === 'jefe' && (
+          <Pressable
+            style={styles.addButton}
+            onPress={() => navigation.navigate('AddProduct', { provider })}
+          >
+            <Text style={styles.addButtonText}>+ Agregar artículo</Text>
+          </Pressable>
+        )}
       </View>
 
-      <Text style={styles.sectionTitle}>Productos</Text>
+      <Text style={styles.sectionTitle}>Productos por categoría</Text>
 
       {loading ? (
         <View style={styles.loaderBox}>
           <ActivityIndicator size="large" />
           <Text style={styles.loaderText}>Cargando productos...</Text>
         </View>
+      ) : groupedProducts.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>
+            Todavía no cargamos los productos de este proveedor en Firebase.
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={products}
-          keyExtractor={(item) => item.id}
+          data={groupedProducts}
+          keyExtractor={(item) => item.category}
           contentContainerStyle={{ paddingBottom: 16 }}
-          ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>
-                Todavía no cargamos los productos de este proveedor en Firebase.
-              </Text>
-            </View>
-          }
           renderItem={({ item }) => (
-            <View style={styles.productCard}>
-              <Text style={styles.productName}>{item.name}</Text>
-              <Text style={styles.productText}>Categoría: {item.category}</Text>
+            <View style={styles.categoryCard}>
+              <Text style={styles.categoryTitle}>{item.category}</Text>
+
+              {item.items.map((product) => (
+                <View key={product.id} style={styles.productRow}>
+                  <Text style={styles.productBullet}>•</Text>
+                  <Text style={styles.productName}>{product.name}</Text>
+                </View>
+              ))}
             </View>
           )}
         />
@@ -125,6 +162,21 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 4,
   },
+  addButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#111827',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  addButtonText: {
+    color: '#111827',
+    fontWeight: '700',
+    fontSize: 13,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -144,24 +196,42 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
   },
   emptyText: {
     color: '#4b5563',
   },
-  productCard: {
+  categoryCard: {
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  productName: {
+  categoryTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#111827',
+    marginBottom: 10,
+    textTransform: 'capitalize',
+  },
+  productRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     marginBottom: 6,
   },
-  productText: {
+  productBullet: {
+    color: '#111827',
+    marginRight: 8,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  productName: {
+    flex: 1,
     color: '#4b5563',
+    fontSize: 14,
+    lineHeight: 20,
   },
   buttonsContainer: {
     marginTop: 8,

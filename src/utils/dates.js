@@ -1,24 +1,61 @@
-import { DAYS } from './constants';
+const DAY_NAMES = [
+  'domingo',
+  'lunes',
+  'martes',
+  'miercoles',
+  'jueves',
+  'viernes',
+  'sabado',
+];
+
+const DAY_LABELS = [
+  'Domingo',
+  'Lunes',
+  'Martes',
+  'Miércoles',
+  'Jueves',
+  'Viernes',
+  'Sábado',
+];
+
+const MONTH_LABELS = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
+
+// Argentina UTC-3
+const ARGENTINA_OFFSET_HOURS = -3;
+
+function getArgentinaDate() {
+  const now = new Date();
+
+  // getTime() ya está en milisegundos absolutos UTC.
+  // Solo hay que moverlo a UTC-3, sin sumar timezoneOffset.
+  const argentinaMs = now.getTime() + ARGENTINA_OFFSET_HOURS * 60 * 60000;
+
+  return new Date(argentinaMs);
+}
 
 export function getTodayName() {
-  const today = new Date();
-  return DAYS[today.getDay()];
+  const today = getArgentinaDate();
+  return DAY_NAMES[today.getUTCDay()];
 }
 
 export function getTodayLabel() {
-  return new Date().toLocaleDateString('es-AR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
+  const today = getArgentinaDate();
+  const dayName = DAY_LABELS[today.getUTCDay()];
+  const dayNumber = today.getUTCDate();
+  const monthName = MONTH_LABELS[today.getUTCMonth()];
 
-export function formatDate(dateString) {
-  const date = new Date(dateString);
-
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return `${dayName}, ${dayNumber} de ${monthName}`;
 }
