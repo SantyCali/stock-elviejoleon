@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { signInUser } from '../services/authService';
+import { COLORS } from '../theme';
 
 export default function LoginScreen({ navigation }) {
   const [login, setLogin] = useState('');
@@ -41,12 +42,18 @@ export default function LoginScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <View style={styles.brandArea}>
+        <Text style={styles.brandEmoji}>🦁</Text>
+        <Text style={styles.brandName}>El Viejo León</Text>
+        <Text style={styles.brandTagline}>Gestión de stock y pedidos</Text>
+      </View>
+
       <View style={styles.card}>
-        <Text style={styles.title}>El Viejo León</Text>
-        <Text style={styles.subtitle}>Ingresá a tu cuenta</Text>
+        <Text style={styles.cardTitle}>Ingresá a tu cuenta</Text>
 
         <TextInput
           placeholder="Nombre de usuario o email"
+          placeholderTextColor={COLORS.textMuted}
           value={login}
           onChangeText={setLogin}
           style={styles.input}
@@ -55,6 +62,7 @@ export default function LoginScreen({ navigation }) {
 
         <TextInput
           placeholder="Contraseña"
+          placeholderTextColor={COLORS.textMuted}
           value={password}
           onChangeText={setPassword}
           style={styles.input}
@@ -62,7 +70,11 @@ export default function LoginScreen({ navigation }) {
         />
 
         <Pressable
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={({ pressed }) => [
+            styles.button,
+            loading && styles.buttonDisabled,
+            pressed && !loading && styles.buttonPressed,
+          ]}
           onPress={handleLogin}
           disabled={loading}
         >
@@ -75,7 +87,7 @@ export default function LoginScreen({ navigation }) {
           style={styles.linkButton}
           onPress={() => navigation.navigate('Register')}
         >
-          <Text style={styles.linkText}>Crear cuenta</Text>
+          <Text style={styles.linkText}>¿No tenés cuenta? Crear cuenta</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -85,41 +97,69 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: COLORS.bg,
     justifyContent: 'center',
     padding: 20,
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 20,
+  brandArea: {
+    alignItems: 'center',
+    marginBottom: 28,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1f2937',
+  brandEmoji: {
+    fontSize: 52,
     marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 15,
-    color: '#6b7280',
+  brandName: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  brandTagline: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
     marginBottom: 18,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     marginBottom: 12,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.cardAlt,
+    color: COLORS.textPrimary,
+    fontSize: 15,
   },
   button: {
-    backgroundColor: '#111827',
-    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
+    shadowColor: COLORS.accentDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.accentDark,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -130,11 +170,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   linkButton: {
-    marginTop: 14,
+    marginTop: 16,
     alignItems: 'center',
   },
   linkText: {
-    color: '#111827',
-    fontWeight: '700',
+    color: COLORS.accent,
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

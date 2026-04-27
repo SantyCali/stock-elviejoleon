@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -68,4 +69,9 @@ export async function createProduct({
   });
 
   return productId;
+}
+
+export async function deleteProduct(productId) {
+  if (!productId) throw new Error('MISSING_PRODUCT_ID');
+  await deleteDoc(doc(db, 'products', productId));
 }

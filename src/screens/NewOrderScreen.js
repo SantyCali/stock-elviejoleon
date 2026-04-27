@@ -9,13 +9,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
 import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
+import { COLORS } from '../theme';
 
 export default function NewOrderScreen({ route, navigation }) {
   const { provider } = route.params;
+  const insets = useSafeAreaInsets();
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,22 +52,18 @@ export default function NewOrderScreen({ route, navigation }) {
         });
       }
 
-      if (latestStock?.createdByName || latestStock?.createdByUsername) {
-        setStockLoadedBy(
-          latestStock.createdByName || latestStock.createdByUsername
-        );
-      } else {
-        setStockLoadedBy(null);
-      }
+      setStockLoadedBy(
+        latestStock?.createdByName || latestStock?.createdByUsername || null
+      );
 
-      const formatted = providerProducts.map((item) => ({
-        ...item,
-        hay: stockMap[item.id] ?? null,
-        ultimoPedido: lastOrderMap[item.id] ?? null,
-        pedirAhora: '',
-      }));
-
-      setProducts(formatted);
+      setProducts(
+        providerProducts.map((item) => ({
+          ...item,
+          hay: stockMap[item.id] ?? null,
+          ultimoPedido: lastOrderMap[item.id] ?? null,
+          pedirAhora: '',
+        }))
+      );
     } catch (error) {
       console.log('Error cargando datos de pedido:', error);
     } finally {
@@ -137,16 +136,12 @@ export default function NewOrderScreen({ route, navigation }) {
         items: itemsToSave,
       };
 
-      Alert.alert(
-        'Pedido guardado',
-        'El pedido se guardó correctamente.',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.navigate('ShareOrder', { order: orderToShare }),
-          },
-        ]
-      );
+      Alert.alert('Pedido guardado', 'El pedido se guardó correctamente.', [
+        {
+          text: 'OK',
+          onPress: () => navigation.navigate('ShareOrder', { order: orderToShare }),
+        },
+      ]);
     } catch (error) {
       console.log('Error guardando pedido:', error);
       Alert.alert('Error', 'No se pudo guardar el pedido.');
@@ -156,61 +151,58 @@ export default function NewOrderScreen({ route, navigation }) {
   }
 
   function renderHay(item) {
-    if (item.hay === null || item.hay === undefined) {
-      return `${stockLoadedBy || 'Poro'} todavía no puso stock`;
-    }
-
+    if (item.hay === null || item.hay === undefined)
+      return `${stockLoadedBy || 'Nadie'} todavía no puso stock`;
     return String(item.hay);
   }
 
   function renderUltimoPedido(item) {
-    if (item.ultimoPedido === null || item.ultimoPedido === undefined) {
+    if (item.ultimoPedido === null || item.ultimoPedido === undefined)
       return 'No hay registro';
-    }
-
     return String(item.ultimoPedido);
   }
 
   const groupedProducts = useMemo(() => {
     const groups = {};
-
     products.forEach((product) => {
       const category = product.category?.trim() || 'Sin categoría';
-
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-
+      if (!groups[category]) groups[category] = [];
       groups[category].push(product);
     });
-
     return Object.keys(groups)
       .sort((a, b) => a.localeCompare(b))
       .map((category) => ({
         category,
-        items: groups[category].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        ),
+        items: groups[category].sort((a, b) => a.name.localeCompare(b.name)),
       }));
   }, [products]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Hacer pedido - {provider.name}</Text>
+      <View style={styles.headerArea}>
+        <Text style={styles.title}>Nuevo pedido</Text>
+        <View style={styles.providerChip}>
+          <Text style={styles.providerChipText}>{provider.name}</Text>
+        </View>
+      </View>
 
       {!loading && (
-        <Pressable style={styles.baseButton} onPress={handleUseLastOrder}>
-          <Text style={styles.baseButtonText}>Usar último pedido como base</Text>
+        <Pressable
+          style={({ pressed }) => [styles.baseButton, pressed && styles.baseButtonPressed]}
+          onPress={handleUseLastOrder}
+        >
+          <Text style={styles.baseButtonText}>♻️  Usar último pedido como base</Text>
         </Pressable>
       )}
 
       {loading ? (
         <View style={styles.loaderBox}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={COLORS.accent} />
           <Text style={styles.loaderText}>Cargando datos...</Text>
         </View>
       ) : groupedProducts.length === 0 ? (
         <View style={styles.emptyBox}>
+          <Text style={styles.emptyIcon}>📦</Text>
           <Text style={styles.emptyText}>
             Este proveedor todavía no tiene productos cargados.
           </Text>
@@ -219,41 +211,40 @@ export default function NewOrderScreen({ route, navigation }) {
         <FlatList
           data={groupedProducts}
           keyExtractor={(item) => item.category}
-          contentContainerStyle={{ paddingBottom: 140 }}
+          contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <View style={styles.categoryCard}>
-              <Text style={styles.categoryTitle}>{item.category}</Text>
+              <View style={styles.categoryHeader}>
+                <View style={styles.categoryDot} />
+                <Text style={styles.categoryTitle}>{item.category}</Text>
+              </View>
 
               {item.items.map((product, productIndex) => (
                 <View key={product.id} style={styles.productCard}>
-                  <Text style={styles.name}>{product.name}</Text>
+                  <Text style={styles.productName}>{product.name}</Text>
 
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Hay:</Text>
+                    <Text style={styles.infoLabel}>Hay</Text>
                     <Text style={styles.infoValue}>{renderHay(product)}</Text>
                   </View>
 
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Último pedido:</Text>
-                    <Text style={styles.infoValue}>
-                      {renderUltimoPedido(product)}
-                    </Text>
+                    <Text style={styles.infoLabel}>Último pedido</Text>
+                    <Text style={styles.infoValue}>{renderUltimoPedido(product)}</Text>
                   </View>
 
                   <View style={styles.inputBlock}>
-                    <Text style={styles.label}>Pedir</Text>
+                    <Text style={styles.inputLabel}>Pedir ahora</Text>
                     <TextInput
                       style={styles.input}
                       placeholder={
-                        item.category === groupedProducts[0]?.category &&
-                        productIndex === 0
+                        item.category === groupedProducts[0]?.category && productIndex === 0
                           ? 'Ej: 7 packs'
                           : ''
                       }
+                      placeholderTextColor={COLORS.textMuted}
                       value={product.pedirAhora}
-                      onChangeText={(value) =>
-                        updatePedirAhora(product.id, value)
-                      }
+                      onChangeText={(value) => updatePedirAhora(product.id, value)}
                     />
                   </View>
                 </View>
@@ -263,15 +254,21 @@ export default function NewOrderScreen({ route, navigation }) {
         />
       )}
 
-      <Pressable
-        style={[styles.button, saving && styles.buttonDisabled]}
-        onPress={handleSaveOrder}
-        disabled={saving}
-      >
-        <Text style={styles.buttonText}>
-          {saving ? 'Guardando...' : 'Guardar pedido'}
-        </Text>
-      </Pressable>
+      <View style={{ paddingBottom: insets.bottom }}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.button,
+            saving && styles.buttonDisabled,
+            pressed && !saving && styles.buttonPressed,
+          ]}
+          onPress={handleSaveOrder}
+          disabled={saving}
+        >
+          <Text style={styles.buttonText}>
+            {saving ? 'Guardando...' : '✅  Guardar pedido'}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -280,26 +277,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: COLORS.bg,
+  },
+  headerArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 12,
+    color: COLORS.textPrimary,
+  },
+  providerChip: {
+    backgroundColor: COLORS.accentLight,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    flexShrink: 1,
+  },
+  providerChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.accentDark,
   },
   baseButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#111827',
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginBottom: 14,
+  },
+  baseButtonPressed: {
+    backgroundColor: COLORS.accentLight,
   },
   baseButtonText: {
-    color: '#111827',
+    color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -310,79 +327,118 @@ const styles = StyleSheet.create({
   },
   loaderText: {
     marginTop: 10,
-    color: '#4b5563',
+    color: COLORS.textSecondary,
   },
   emptyBox: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
     borderRadius: 16,
-    padding: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyIcon: {
+    fontSize: 32,
+    marginBottom: 10,
   },
   emptyText: {
-    color: '#4b5563',
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  listContent: {
+    paddingBottom: 16,
   },
   categoryCard: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  categoryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
+    marginRight: 8,
   },
   categoryTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 10,
+    color: COLORS.textPrimary,
     textTransform: 'capitalize',
   },
   productCard: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.cardAlt,
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
   },
-  name: {
+  productName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.textPrimary,
     marginBottom: 8,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 6,
+    alignItems: 'center',
+    marginBottom: 5,
+    gap: 8,
   },
   infoLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#374151',
-    marginRight: 8,
+    color: COLORS.textSecondary,
+    width: 90,
   },
   infoValue: {
-    fontSize: 14,
-    color: '#111827',
+    fontSize: 13,
+    color: COLORS.textPrimary,
     flex: 1,
   },
   inputBlock: {
     marginTop: 8,
   },
-  label: {
+  inputLabel: {
     fontSize: 12,
-    color: '#4b5563',
+    fontWeight: '600',
+    color: COLORS.accent,
     marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
+    color: COLORS.textPrimary,
+    fontSize: 14,
   },
   button: {
-    backgroundColor: '#111827',
+    backgroundColor: COLORS.accent,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 8,
+    shadowColor: COLORS.accentDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.accentDark,
   },
   buttonDisabled: {
     opacity: 0.7,

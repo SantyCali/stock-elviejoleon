@@ -4,12 +4,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { registerUser } from '../services/authService';
+import { COLORS } from '../theme';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
@@ -21,33 +23,20 @@ export default function RegisterScreen() {
 
   async function handleRegister() {
     if (!name.trim() || !username.trim() || !email.trim() || !password.trim()) {
-      Alert.alert(
-        'Faltan datos',
-        'Completá nombre, nombre de usuario, email y contraseña.'
-      );
+      Alert.alert('Faltan datos', 'Completá nombre, usuario, email y contraseña.');
       return;
     }
 
     try {
       setLoading(true);
-
-      await registerUser({
-        name,
-        username,
-        email,
-        password,
-        role,
-      });
-
+      await registerUser({ name, username, email, password, role });
       Alert.alert('Cuenta creada', 'La cuenta se creó correctamente.');
     } catch (error) {
       console.log(error);
-
       if (error.message === 'USERNAME_ALREADY_EXISTS') {
         Alert.alert('Error', 'Ese nombre de usuario ya existe.');
         return;
       }
-
       Alert.alert('Error', 'No se pudo crear la cuenta.');
     } finally {
       setLoading(false);
@@ -59,89 +48,92 @@ export default function RegisterScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>Crear cuenta</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.card}>
+          <View style={styles.cardTopBar} />
+          <View style={styles.cardContent}>
+            <Text style={styles.title}>Crear cuenta</Text>
+            <Text style={styles.subtitle}>Completá los datos para registrarte</Text>
 
-        <TextInput
-          placeholder="Nombre"
-          value={name}
-          onChangeText={setName}
-          style={styles.input}
-        />
+            <Text style={styles.fieldLabel}>Nombre</Text>
+            <TextInput
+              placeholder="Tu nombre completo"
+              placeholderTextColor={COLORS.textMuted}
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+            />
 
-        <TextInput
-          placeholder="Nombre de usuario"
-          value={username}
-          onChangeText={setUsername}
-          style={styles.input}
-          autoCapitalize="none"
-        />
+            <Text style={styles.fieldLabel}>Usuario</Text>
+            <TextInput
+              placeholder="Nombre de usuario"
+              placeholderTextColor={COLORS.textMuted}
+              value={username}
+              onChangeText={setUsername}
+              style={styles.input}
+              autoCapitalize="none"
+            />
 
-        <TextInput
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+            <Text style={styles.fieldLabel}>Email</Text>
+            <TextInput
+              placeholder="tu@email.com"
+              placeholderTextColor={COLORS.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
 
-        <TextInput
-          placeholder="Contraseña"
-          value={password}
-          onChangeText={setPassword}
-          style={styles.input}
-          secureTextEntry
-        />
+            <Text style={styles.fieldLabel}>Contraseña</Text>
+            <TextInput
+              placeholder="Mínimo 6 caracteres"
+              placeholderTextColor={COLORS.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              secureTextEntry
+            />
 
-        <Text style={styles.roleLabel}>Rol</Text>
+            <Text style={styles.fieldLabel}>Rol</Text>
+            <View style={styles.roleRow}>
+              <Pressable
+                style={[styles.roleButton, role === 'empleado' && styles.roleButtonActive]}
+                onPress={() => setRole('empleado')}
+              >
+                {role === 'empleado' && <View style={styles.roleCheck} />}
+                <Text style={[styles.roleButtonText, role === 'empleado' && styles.roleButtonTextActive]}>
+                  Empleado
+                </Text>
+              </Pressable>
 
-        <View style={styles.roleRow}>
-          <Pressable
-            style={[
-              styles.roleButton,
-              role === 'empleado' && styles.roleButtonActive,
-            ]}
-            onPress={() => setRole('empleado')}
-          >
-            <Text
-              style={[
-                styles.roleButtonText,
-                role === 'empleado' && styles.roleButtonTextActive,
+              <Pressable
+                style={[styles.roleButton, role === 'jefe' && styles.roleButtonActive]}
+                onPress={() => setRole('jefe')}
+              >
+                {role === 'jefe' && <View style={styles.roleCheck} />}
+                <Text style={[styles.roleButtonText, role === 'jefe' && styles.roleButtonTextActive]}>
+                  Jefe
+                </Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                loading && styles.buttonDisabled,
+                pressed && !loading && styles.buttonPressed,
               ]}
+              onPress={handleRegister}
+              disabled={loading}
             >
-              Empleado
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.roleButton,
-              role === 'jefe' && styles.roleButtonActive,
-            ]}
-            onPress={() => setRole('jefe')}
-          >
-            <Text
-              style={[
-                styles.roleButtonText,
-                role === 'jefe' && styles.roleButtonTextActive,
-              ]}
-            >
-              Jefe
-            </Text>
-          </Pressable>
+              <Text style={styles.buttonText}>
+                {loading ? 'Creando cuenta...' : '✅  Crear cuenta'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-
-        <Pressable
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleRegister}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Creando...' : 'Crear cuenta'}
-          </Text>
-        </Pressable>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -149,66 +141,108 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
-    justifyContent: 'center',
+    backgroundColor: COLORS.bg,
+  },
+  scroll: {
     padding: 20,
+    paddingBottom: 40,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardTopBar: {
+    height: 5,
+    backgroundColor: COLORS.accent,
+  },
+  cardContent: {
     padding: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 16,
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-    backgroundColor: '#fff',
-  },
-  roleLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 8,
-    marginTop: 4,
+    paddingVertical: 13,
+    marginBottom: 14,
+    backgroundColor: COLORS.cardAlt,
+    color: COLORS.textPrimary,
+    fontSize: 15,
   },
   roleRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   roleButton: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.cardAlt,
   },
   roleButtonActive: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
+    backgroundColor: COLORS.accentLight,
+    borderColor: COLORS.accent,
+  },
+  roleCheck: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
   },
   roleButtonText: {
-    color: '#111827',
-    fontWeight: '700',
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    fontSize: 14,
   },
   roleButtonTextActive: {
-    color: '#fff',
+    color: COLORS.accentDark,
+    fontWeight: '700',
   },
   button: {
-    backgroundColor: '#111827',
-    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    shadowColor: COLORS.accentDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.accentDark,
   },
   buttonDisabled: {
     opacity: 0.7,

@@ -12,6 +12,7 @@ import {
   getUserProfile,
   signOutUser,
 } from '../services/authService';
+import { COLORS } from '../theme';
 
 const Drawer = createDrawerNavigator();
 
@@ -56,6 +57,7 @@ function CustomDrawerContent(props) {
     >
       <View>
         <View style={styles.headerBox}>
+          <Text style={styles.brandEmoji}>🦁</Text>
           <Text style={styles.headerTitle}>El Viejo León</Text>
           <Text style={styles.headerSubtitle}>Menú principal</Text>
 
@@ -69,29 +71,36 @@ function CustomDrawerContent(props) {
                 <Text style={styles.userMeta}>@{profile.username}</Text>
               )}
 
-              <Text style={styles.userRole}>
-                Rol: {formatRole(profile.role)}
-              </Text>
+              <View style={styles.roleBadge}>
+                <Text style={styles.roleBadgeText}>{formatRole(profile.role)}</Text>
+              </View>
             </View>
           )}
         </View>
 
-        <Pressable
-          style={styles.item}
-          onPress={() => props.navigation.navigate('Inicio')}
-        >
-          <Text style={styles.itemText}>Inicio</Text>
-        </Pressable>
+        <View style={styles.menuSection}>
+          <Pressable
+            style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+            onPress={() => props.navigation.navigate('Inicio')}
+          >
+            <Text style={styles.itemIcon}>🏠</Text>
+            <Text style={styles.itemText}>Inicio</Text>
+          </Pressable>
 
-        <Pressable
-          style={styles.item}
-          onPress={() => props.navigation.navigate('Historial')}
-        >
-          <Text style={styles.itemText}>Historial</Text>
-        </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+            onPress={() => props.navigation.navigate('Historial')}
+          >
+            <Text style={styles.itemIcon}>📋</Text>
+            <Text style={styles.itemText}>Historial</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <Pressable style={styles.logoutButton} onPress={handleLogout}>
+      <Pressable
+        style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutButtonPressed]}
+        onPress={handleLogout}
+      >
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
       </Pressable>
     </DrawerContentScrollView>
@@ -107,13 +116,13 @@ export default function DrawerNavigator() {
         headerTitleAlign: 'center',
         drawerPosition: 'left',
         drawerType: 'slide',
-        sceneStyle: { backgroundColor: '#f6f7fb' },
+        sceneStyle: { backgroundColor: COLORS.bg },
         headerStyle: {
-          backgroundColor: '#ffffff',
+          backgroundColor: COLORS.card,
         },
         headerTitleStyle: {
           fontWeight: '800',
-          color: '#111827',
+          color: COLORS.textPrimary,
         },
       }}
     >
@@ -138,64 +147,90 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerBox: {
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: 16,
+    paddingBottom: 22,
+    marginBottom: 10,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
+  brandEmoji: {
+    fontSize: 32,
     marginBottom: 4,
   },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 2,
+  },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
     marginBottom: 14,
   },
   userBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 14,
+    padding: 12,
   },
   userName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
+    color: '#fff',
+    marginBottom: 2,
   },
   userMeta: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 4,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 8,
   },
-  userRole: {
-    fontSize: 14,
+  roleBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  roleBadgeText: {
+    color: '#fff',
     fontWeight: '700',
-    color: '#374151',
+    fontSize: 12,
+  },
+  menuSection: {
+    paddingHorizontal: 10,
+    paddingTop: 4,
   },
   item: {
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    marginHorizontal: 10,
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 6,
     borderRadius: 14,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
+  },
+  itemPressed: {
+    backgroundColor: COLORS.accentLight,
+  },
+  itemIcon: {
+    fontSize: 18,
+    marginRight: 12,
   },
   itemText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.textPrimary,
   },
   logoutButton: {
     marginHorizontal: 16,
     marginBottom: 20,
-    backgroundColor: '#111827',
+    backgroundColor: COLORS.textPrimary,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+  },
+  logoutButtonPressed: {
+    opacity: 0.8,
   },
   logoutButtonText: {
     color: '#fff',

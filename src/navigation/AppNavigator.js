@@ -15,6 +15,7 @@ import OrderDetailScreen from '../screens/OrderDetailScreen';
 import ShareOrderScreen from '../screens/ShareOrderScreen';
 import ProviderOrderHistoryScreen from '../screens/ProviderOrderHistoryScreen';
 import { observeAuthState } from '../services/authService';
+import { COLORS } from '../theme';
 
 const Stack = createNativeStackNavigator();
 
@@ -52,13 +53,13 @@ export default function AppNavigator() {
       <Stack.Navigator
         screenOptions={({ navigation }) => ({
           headerTitleAlign: 'center',
-          contentStyle: { backgroundColor: '#f6f7fb' },
+          contentStyle: { backgroundColor: COLORS.bg },
           headerStyle: {
-            backgroundColor: '#ffffff',
+            backgroundColor: COLORS.card,
           },
           headerTitleStyle: {
             fontWeight: '800',
-            color: '#111827',
+            color: COLORS.textPrimary,
           },
           headerBackVisible: false,
           headerLeft: () => <BackArrow navigation={navigation} />,
@@ -136,15 +137,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f6f7fb',
+    backgroundColor: COLORS.bg,
   },
   backButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: 30,
     lineHeight: 32,
-    color: '#111827',
+    color: COLORS.textPrimary,
     fontWeight: '700',
     marginTop: -2,
   },

@@ -10,22 +10,16 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { getRecentOrdersByProvider } from '../services/orderService';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../theme';
 
 function formatCreatedAt(createdAt) {
   if (!createdAt) return 'Sin fecha';
-
   if (typeof createdAt === 'string') {
     const date = new Date(createdAt);
-    if (!isNaN(date.getTime())) {
-      return date.toLocaleString('es-AR');
-    }
+    if (!isNaN(date.getTime())) return date.toLocaleString('es-AR');
     return createdAt;
   }
-
-  if (createdAt?.toDate) {
-    return createdAt.toDate().toLocaleString('es-AR');
-  }
-
+  if (createdAt?.toDate) return createdAt.toDate().toLocaleString('es-AR');
   return 'Sin fecha';
 }
 
@@ -62,7 +56,7 @@ export default function ProviderOrderHistoryScreen({ route, navigation }) {
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={COLORS.accent} />
         <Text style={styles.loaderText}>Cargando pedidos...</Text>
       </View>
     );
@@ -71,34 +65,48 @@ export default function ProviderOrderHistoryScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Últimos 5 pedidos</Text>
-      <Text style={styles.subtitle}>{provider.name}</Text>
+      <View style={styles.providerChip}>
+        <Text style={styles.providerChipText}>{provider.name}</Text>
+      </View>
 
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>
-              Todavía no hay pedidos guardados para este proveedor.
+            <Text style={styles.emptyIcon}>📋</Text>
+            <Text style={styles.emptyTitle}>Sin pedidos guardados</Text>
+            <Text style={styles.emptySubtitle}>
+              Todavía no hay pedidos para este proveedor.
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <View style={styles.card}>
+            <View style={styles.cardAccent} />
             <Pressable
               style={styles.cardContent}
               onPress={() => navigation.navigate('OrderDetail', { order: item })}
             >
-              <Text style={styles.dateText}>{formatCreatedAt(item.createdAt)}</Text>
-              <Text style={styles.previewText}>{buildPreview(item.items)}</Text>
+              <View style={styles.cardTopRow}>
+                <View style={styles.orderNumberBadge}>
+                  <Text style={styles.orderNumberText}>#{orders.length - index}</Text>
+                </View>
+                <Text style={styles.dateText}>{formatCreatedAt(item.createdAt)}</Text>
+              </View>
+              {!!buildPreview(item.items) && (
+                <Text style={styles.previewText} numberOfLines={1}>
+                  {buildPreview(item.items)}
+                </Text>
+              )}
             </Pressable>
 
             <Pressable
-              style={styles.shareButton}
+              style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
               onPress={() => navigation.navigate('ShareOrder', { order: item })}
             >
-              <Ionicons name="share-outline" size={22} color="#fff" />
+              <Ionicons name="share-outline" size={20} color="#fff" />
             </Pressable>
           </View>
         )}
@@ -112,64 +120,118 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f6f7fb',
+    backgroundColor: COLORS.bg,
   },
   loaderText: {
     marginTop: 10,
-    color: '#4b5563',
+    color: COLORS.textSecondary,
   },
   container: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: COLORS.bg,
     padding: 16,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
+    color: COLORS.textPrimary,
+    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 15,
-    color: '#6b7280',
+  providerChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.accentLight,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     marginBottom: 16,
   },
-  emptyBox: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+  providerChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.accentDark,
   },
-  emptyText: {
-    color: '#4b5563',
+  listContent: {
+    paddingBottom: 20,
+  },
+  emptyBox: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
     borderRadius: 16,
-    padding: 16,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardAccent: {
+    width: 5,
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.accent,
   },
   cardContent: {
     flex: 1,
-    paddingRight: 12,
+    padding: 14,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 5,
+  },
+  orderNumberBadge: {
+    backgroundColor: COLORS.accentLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  orderNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.accentDark,
   },
   dateText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   previewText: {
-    fontSize: 14,
-    color: '#4b5563',
+    fontSize: 13,
+    color: COLORS.textMuted,
   },
   shareButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#111827',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
+  },
+  shareButtonPressed: {
+    backgroundColor: COLORS.accentDark,
   },
 });
