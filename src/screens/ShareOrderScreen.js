@@ -13,14 +13,19 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS } from '../theme';
 
+const TIME_OPTS = {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+};
+
 function formatCreatedAt(createdAt) {
   if (!createdAt) return 'Sin fecha';
   if (typeof createdAt === 'string') {
     const date = new Date(createdAt);
-    if (!isNaN(date.getTime())) return date.toLocaleString('es-AR');
+    if (!isNaN(date.getTime())) return date.toLocaleString('es-AR', TIME_OPTS);
     return createdAt;
   }
-  if (createdAt?.toDate) return createdAt.toDate().toLocaleString('es-AR');
+  if (createdAt?.toDate) return createdAt.toDate().toLocaleString('es-AR', TIME_OPTS);
   return 'Sin fecha';
 }
 

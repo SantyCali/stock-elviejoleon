@@ -1,18 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { getProviders } from '../services/providerService';
 import { COLORS } from '../theme';
+
+function normalize(str) {
+  return String(str)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
 
 export default function ProvidersListScreen({ navigation }) {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     loadProviders();
@@ -29,6 +39,16 @@ export default function ProvidersListScreen({ navigation }) {
       setLoading(false);
     }
   }
+
+  const filtered = useMemo(() => {
+    const q = normalize(query.trim());
+    if (!q) return providers;
+    return providers.filter(p => {
+      if (normalize(p.name).includes(q)) return true;
+      if (p.alias?.some(a => normalize(a).includes(q))) return true;
+      return false;
+    });
+  }, [providers, query]);
 
   function formatDays(days = []) {
     if (!days.length) return 'Sin días cargados';
@@ -49,13 +69,45 @@ export default function ProvidersListScreen({ navigation }) {
       <View style={styles.headerArea}>
         <Text style={styles.title}>Proveedores</Text>
         <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{providers.length}</Text>
+          <Text style={styles.countBadgeText}>
+            {query.trim() ? filtered.length : providers.length}
+          </Text>
         </View>
       </View>
       <Text style={styles.subtitle}>Tocá uno para ver sus productos</Text>
 
+      {/* Buscador */}
+      <View style={styles.searchBox}>
+        <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar proveedor..."
+          placeholderTextColor={COLORS.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          returnKeyType="search"
+          clearButtonMode="never"
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
+        />
+        {!!query && (
+          <Pressable onPress={() => setQuery('')} style={styles.clearButton} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </Pressable>
+        )}
+      </View>
+
+      {filtered.length === 0 && !!query.trim() && (
+        <View style={styles.emptySearch}>
+          <Text style={styles.emptySearchIcon}>🔍</Text>
+          <Text style={styles.emptySearchText}>
+            No se encontró ningún proveedor con "{query}"
+          </Text>
+        </View>
+      )}
+
       <FlatList
-        data={providers}
+        data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => (
@@ -150,7 +202,50 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
+  clearButton: {
+    marginLeft: 6,
+  },
+  emptySearch: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptySearchIcon: {
+    fontSize: 32,
+    marginBottom: 10,
+  },
+  emptySearchText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   listContent: {
     paddingBottom: 20,

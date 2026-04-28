@@ -1,8 +1,12 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updatePassword,
 } from 'firebase/auth';
 import {
   collection,
@@ -115,4 +119,18 @@ export async function getUserProfile(uid) {
 
 export function getCurrentUser() {
   return auth.currentUser;
+}
+
+export async function resetPassword(email) {
+  const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanEmail) throw new Error('MISSING_EMAIL');
+  await sendPasswordResetEmail(auth, cleanEmail);
+}
+
+export async function changePassword(currentPassword, newPassword) {
+  const user = auth.currentUser;
+  if (!user || !user.email) throw new Error('NOT_AUTHENTICATED');
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  await updatePassword(user, newPassword);
 }

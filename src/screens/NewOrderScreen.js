@@ -16,6 +16,11 @@ import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
 
+const pedirCache = {};
+function getCachedPedir(providerId, productId) { return pedirCache[providerId]?.[productId] ?? ''; }
+function setCachedPedir(providerId, productId, value) { if (!pedirCache[providerId]) pedirCache[providerId] = {}; pedirCache[providerId][productId] = value; }
+function clearPedirCache(providerId) { delete pedirCache[providerId]; }
+
 export default function NewOrderScreen({ route, navigation }) {
   const { provider } = route.params;
   const insets = useSafeAreaInsets();
@@ -61,7 +66,7 @@ export default function NewOrderScreen({ route, navigation }) {
           ...item,
           hay: stockMap[item.id] ?? null,
           ultimoPedido: lastOrderMap[item.id] ?? null,
-          pedirAhora: '',
+          pedirAhora: getCachedPedir(provider.id, item.id),
         }))
       );
     } catch (error) {
@@ -72,6 +77,7 @@ export default function NewOrderScreen({ route, navigation }) {
   }
 
   function updatePedirAhora(productId, value) {
+    setCachedPedir(provider.id, productId, value);
     setProducts((prev) =>
       prev.map((item) =>
         item.id === productId ? { ...item, pedirAhora: value } : item
@@ -81,13 +87,14 @@ export default function NewOrderScreen({ route, navigation }) {
 
   function handleUseLastOrder() {
     setProducts((prev) =>
-      prev.map((item) => ({
-        ...item,
-        pedirAhora:
+      prev.map((item) => {
+        const newValue =
           item.ultimoPedido !== null && item.ultimoPedido !== undefined
             ? String(item.ultimoPedido)
-            : item.pedirAhora,
-      }))
+            : item.pedirAhora;
+        setCachedPedir(provider.id, item.id, newValue);
+        return { ...item, pedirAhora: newValue };
+      })
     );
   }
 
@@ -136,6 +143,7 @@ export default function NewOrderScreen({ route, navigation }) {
         items: itemsToSave,
       };
 
+      clearPedirCache(provider.id);
       Alert.alert('Pedido guardado', 'El pedido se guardó correctamente.', [
         {
           text: 'OK',
@@ -225,12 +233,16 @@ export default function NewOrderScreen({ route, navigation }) {
 
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Hay</Text>
-                    <Text style={styles.infoValue}>{renderHay(product)}</Text>
+                    <View style={styles.infoValueWrap}>
+                      <Text style={styles.infoValue}>{renderHay(product)}</Text>
+                    </View>
                   </View>
 
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Último pedido</Text>
-                    <Text style={styles.infoValue}>{renderUltimoPedido(product)}</Text>
+                    <View style={styles.infoValueWrap}>
+                      <Text style={styles.infoValue}>{renderUltimoPedido(product)}</Text>
+                    </View>
                   </View>
 
                   <View style={styles.inputBlock}>
@@ -389,7 +401,7 @@ const styles = StyleSheet.create({
   },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 5,
     gap: 8,
   },
@@ -399,10 +411,12 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     width: 90,
   },
+  infoValueWrap: {
+    flex: 1,
+  },
   infoValue: {
     fontSize: 13,
     color: COLORS.textPrimary,
-    flex: 1,
   },
   inputBlock: {
     marginTop: 8,

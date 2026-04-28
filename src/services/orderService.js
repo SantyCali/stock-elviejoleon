@@ -72,6 +72,26 @@ export async function getRecentOrdersByProvider(providerId, limitCount = 5) {
   }));
 }
 
+export async function hasOrderToday(providerId) {
+  try {
+    const lastOrder = await getLastOrderByProvider(providerId);
+    if (!lastOrder || !lastOrder.createdAt) return false;
+
+    const orderDate = lastOrder.createdAt?.toDate
+      ? lastOrder.createdAt.toDate()
+      : new Date(lastOrder.createdAt);
+
+    const today = new Date();
+    return (
+      orderDate.getDate() === today.getDate() &&
+      orderDate.getMonth() === today.getMonth() &&
+      orderDate.getFullYear() === today.getFullYear()
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function keepOnlyLastFiveOrdersByProvider(providerId) {
   const q = query(
     collection(db, 'orders'),

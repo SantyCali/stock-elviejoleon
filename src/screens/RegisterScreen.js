@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { registerUser } from '../services/authService';
 import { COLORS } from '../theme';
 
@@ -18,8 +20,19 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('empleado');
   const [loading, setLoading] = useState(false);
+
+  const eyeScale = useRef(new Animated.Value(1)).current;
+
+  function togglePassword() {
+    Animated.sequence([
+      Animated.timing(eyeScale, { toValue: 0.65, duration: 80, useNativeDriver: true }),
+      Animated.spring(eyeScale, { toValue: 1, useNativeDriver: true, tension: 180, friction: 7 }),
+    ]).start();
+    setShowPassword((prev) => !prev);
+  }
 
   async function handleRegister() {
     if (!name.trim() || !username.trim() || !email.trim() || !password.trim()) {
@@ -86,14 +99,25 @@ export default function RegisterScreen() {
             />
 
             <Text style={styles.fieldLabel}>Contraseña</Text>
-            <TextInput
-              placeholder="Mínimo 6 caracteres"
-              placeholderTextColor={COLORS.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              style={styles.input}
-              secureTextEntry
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                placeholder="Mínimo 6 caracteres"
+                placeholderTextColor={COLORS.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                style={[styles.input, styles.passwordInput]}
+                secureTextEntry={!showPassword}
+              />
+              <Pressable onPress={togglePassword} style={styles.eyeBtn} hitSlop={8}>
+                <Animated.View style={{ transform: [{ scale: eyeScale }] }}>
+                  <Ionicons
+                    name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                    size={21}
+                    color={COLORS.textSecondary}
+                  />
+                </Animated.View>
+              </Pressable>
+            </View>
 
             <Text style={styles.fieldLabel}>Rol</Text>
             <View style={styles.roleRow}>
@@ -194,6 +218,23 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontSize: 15,
   },
+
+  // ── Contraseña con ojo ────────────────────────────────────────────────
+  passwordContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  passwordInput: {
+    paddingRight: 46,
+    marginBottom: 0,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 13,
+    padding: 4,
+  },
+
   roleRow: {
     flexDirection: 'row',
     gap: 10,

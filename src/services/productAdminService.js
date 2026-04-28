@@ -5,6 +5,7 @@ import {
   getDocs,
   query,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -74,4 +75,54 @@ export async function createProduct({
 export async function deleteProduct(productId) {
   if (!productId) throw new Error('MISSING_PRODUCT_ID');
   await deleteDoc(doc(db, 'products', productId));
+}
+
+export async function updateProductName(productId, newName) {
+  if (!productId) throw new Error('MISSING_PRODUCT_ID');
+  const cleanName = String(newName).trim();
+  if (!cleanName) throw new Error('MISSING_PRODUCT_NAME');
+  await updateDoc(doc(db, 'products', productId), { name: cleanName });
+  return cleanName;
+}
+
+export async function getStandaloneCategories(providerId) {
+  try {
+    const q = query(
+      collection(db, 'providerCategories'),
+      where('providerId', '==', providerId)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => d.data().name).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+export async function createStandaloneCategory(providerId, name) {
+  const cleanName = String(name).trim();
+  if (!cleanName) throw new Error('MISSING_CATEGORY_NAME');
+  const id = `${slugify(providerId)}-${slugify(cleanName)}`;
+  await setDoc(doc(db, 'providerCategories', id), { providerId, name: cleanName });
+  return cleanName;
+}
+
+export async function moveProductToCategory(productId, newCategory) {
+  if (!productId) throw new Error('MISSING_PRODUCT_ID');
+  const cleanCat = String(newCategory).trim();
+  if (!cleanCat) throw new Error('MISSING_CATEGORY_NAME');
+  await updateDoc(doc(db, 'products', productId), { category: cleanCat });
+  return cleanCat;
+}
+
+export async function renameCategory(providerId, oldCategory, newCategory) {
+  const cleanNew = String(newCategory).trim();
+  if (!cleanNew) throw new Error('MISSING_CATEGORY_NAME');
+  const q = query(
+    collection(db, 'products'),
+    where('providerId', '==', providerId),
+    where('category', '==', oldCategory)
+  );
+  const snapshot = await getDocs(q);
+  await Promise.all(snapshot.docs.map((d) => updateDoc(d.ref, { category: cleanNew })));
+  return cleanNew;
 }

@@ -1,18 +1,24 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProductsByProvider } from '../services/productService';
-import { deleteProduct } from '../services/productAdminService';
+import { createStandaloneCategory, deleteProduct, getStandaloneCategories, moveProductToCategory, renameCategory, updateProductName } from '../services/productAdminService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
 
@@ -25,6 +31,34 @@ export default function ProviderScreen({ route, navigation }) {
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [deletingId, setDeletingId] = useState(null);
 
+  // Edit modal state
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Standalone categories
+  const [standaloneCategories, setStandaloneCategories] = useState([]);
+
+  // Create category modal
+  const [createCatVisible, setCreateCatVisible] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [createCatSaving, setCreateCatSaving] = useState(false);
+
+  // Move category modal
+  const [moveCatVisible, setMoveCatVisible] = useState(false);
+  const [movingCategory, setMovingCategory] = useState(null);
+  const [moveCatTarget, setMoveCatTarget] = useState('');
+  const [moveCatSaving, setMoveCatSaving] = useState(false);
+
+  // Move product modal
+  const [moveProdVisible, setMoveProdVisible] = useState(false);
+  const [movingProduct, setMovingProduct] = useState(null);
+  const [moveProdTarget, setMoveProdTarget] = useState('');
+  const [moveProdSaving, setMoveProdSaving] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -34,13 +68,15 @@ export default function ProviderScreen({ route, navigation }) {
   async function loadData() {
     try {
       setLoading(true);
-      const data = await getProductsByProvider(provider.id);
-      setProducts(data);
       const currentUser = getCurrentUser();
-      if (currentUser) {
-        const profile = await getUserProfile(currentUser.uid);
-        setUserRole(profile?.role || null);
-      }
+      const [data, extra, profile] = await Promise.all([
+        getProductsByProvider(provider.id),
+        getStandaloneCategories(provider.id),
+        currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
+      ]);
+      setProducts(data);
+      setStandaloneCategories(extra);
+      setUserRole(profile?.role || null);
     } catch (error) {
       console.log('Error cargando proveedor:', error);
     } finally {
@@ -88,6 +124,163 @@ export default function ProviderScreen({ route, navigation }) {
     }
   }
 
+  function openEditModal(product) {
+    setEditingProduct(product);
+    setEditName(product.name);
+    setEditModalVisible(true);
+    scaleAnim.setValue(0.85);
+    opacityAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 130,
+        friction: 8,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }
+
+  function closeEditModal(callback) {
+    Animated.parallel([
+      Animated.timing(scaleAnim, {
+        toValue: 0.85,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setEditModalVisible(false);
+      setEditingProduct(null);
+      if (callback) callback();
+    });
+  }
+
+  async function handleSaveEdit() {
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      Alert.alert('Falta dato', 'Escribí un nombre para el artículo.');
+      return;
+    }
+    if (trimmed === editingProduct.name) {
+      closeEditModal();
+      return;
+    }
+    try {
+      setEditSaving(true);
+      await updateProductName(editingProduct.id, trimmed);
+      setProducts(prev =>
+        prev.map(p => p.id === editingProduct.id ? { ...p, name: trimmed } : p)
+      );
+      closeEditModal();
+    } catch (error) {
+      console.log('Error editando producto:', error);
+      Alert.alert('Error', 'No se pudo guardar el cambio.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  function openSmallModal(setVisible, setup) {
+    scaleAnim.setValue(0.85);
+    opacityAnim.setValue(0);
+    setup();
+    setVisible(true);
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 130, friction: 8 }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeSmallModal(setVisible, callback) {
+    Animated.parallel([
+      Animated.timing(scaleAnim, { toValue: 0.85, duration: 140, useNativeDriver: true }),
+      Animated.timing(opacityAnim, { toValue: 0, duration: 140, useNativeDriver: true }),
+    ]).start(() => { setVisible(false); if (callback) callback(); });
+  }
+
+  function openCreateCat() {
+    setNewCatName('');
+    openSmallModal(setCreateCatVisible, () => {});
+  }
+
+  async function handleSaveCreateCat() {
+    const trimmed = newCatName.trim();
+    if (!trimmed) { Alert.alert('Falta dato', 'Escribí un nombre para la categoría.'); return; }
+    if (derivedCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      Alert.alert('Ya existe', 'Ya hay una categoría con ese nombre.'); return;
+    }
+    try {
+      setCreateCatSaving(true);
+      await createStandaloneCategory(provider.id, trimmed);
+      setStandaloneCategories((prev) =>
+        Array.from(new Set([...prev, trimmed])).sort((a, b) => a.localeCompare(b))
+      );
+      closeSmallModal(setCreateCatVisible);
+    } catch (error) {
+      console.log('Error creando categoría:', error);
+      Alert.alert('Error', 'No se pudo crear la categoría.');
+    } finally {
+      setCreateCatSaving(false);
+    }
+  }
+
+  function openMoveCat(category) {
+    openSmallModal(setMoveCatVisible, () => {
+      setMovingCategory(category);
+      setMoveCatTarget('');
+    });
+  }
+
+  async function handleSaveMoveCat() {
+    if (!moveCatTarget) { Alert.alert('Falta dato', 'Elegí una categoría destino.'); return; }
+    try {
+      setMoveCatSaving(true);
+      await renameCategory(provider.id, movingCategory, moveCatTarget);
+      setProducts((prev) =>
+        prev.map((p) => p.category === movingCategory ? { ...p, category: moveCatTarget } : p)
+      );
+      closeSmallModal(setMoveCatVisible);
+    } catch (error) {
+      console.log('Error moviendo categoría:', error);
+      Alert.alert('Error', 'No se pudo mover la categoría.');
+    } finally {
+      setMoveCatSaving(false);
+    }
+  }
+
+  function openMoveProd(product) {
+    openSmallModal(setMoveProdVisible, () => {
+      setMovingProduct(product);
+      setMoveProdTarget('');
+    });
+  }
+
+  async function handleSaveMoveProd() {
+    if (!moveProdTarget) { Alert.alert('Falta dato', 'Elegí una categoría destino.'); return; }
+    try {
+      setMoveProdSaving(true);
+      await moveProductToCategory(movingProduct.id, moveProdTarget);
+      setProducts((prev) =>
+        prev.map((p) => p.id === movingProduct.id ? { ...p, category: moveProdTarget } : p)
+      );
+      closeSmallModal(setMoveProdVisible);
+    } catch (error) {
+      console.log('Error moviendo artículo:', error);
+      Alert.alert('Error', 'No se pudo mover el artículo.');
+    } finally {
+      setMoveProdSaving(false);
+    }
+  }
+
   const groupedProducts = useMemo(() => {
     const groups = {};
     products.forEach((product) => {
@@ -102,6 +295,12 @@ export default function ProviderScreen({ route, navigation }) {
         items: groups[category].sort((a, b) => a.name.localeCompare(b.name)),
       }));
   }, [products]);
+
+  const derivedCategories = useMemo(() => {
+    const set = new Set(standaloneCategories);
+    groupedProducts.forEach((g) => set.add(g.category));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [groupedProducts, standaloneCategories]);
 
   return (
     <View style={styles.container}>
@@ -126,23 +325,30 @@ export default function ProviderScreen({ route, navigation }) {
             ))}
           </View>
 
-          {userRole === 'jefe' && (
-            <View style={styles.topButtonsRow}>
-              <Pressable
-                style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
-                onPress={() => navigation.navigate('AddProduct', { provider })}
-              >
-                <Text style={styles.outlineButtonText}>+ Agregar artículo</Text>
-              </Pressable>
+          <View style={styles.topButtonsRow}>
+            <Pressable
+              style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
+              onPress={() => navigation.navigate('AddProduct', { provider })}
+            >
+              <Text style={styles.outlineButtonText}>+ Agregar artículo</Text>
+            </Pressable>
 
+            <Pressable
+              style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
+              onPress={openCreateCat}
+            >
+              <Text style={styles.outlineButtonText}>+ Categoría</Text>
+            </Pressable>
+
+            {userRole === 'jefe' && (
               <Pressable
                 style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
                 onPress={() => navigation.navigate('ProviderOrderHistory', { provider })}
               >
                 <Text style={styles.outlineButtonText}>Últimos 5 pedidos</Text>
               </Pressable>
-            </View>
-          )}
+            )}
+          </View>
         </View>
       </View>
 
@@ -187,6 +393,15 @@ export default function ProviderScreen({ route, navigation }) {
                   <View style={styles.categoryCount}>
                     <Text style={styles.categoryCountText}>{item.items.length}</Text>
                   </View>
+                  {derivedCategories.length > 1 && (
+                    <Pressable
+                      style={({ pressed }) => [styles.catMoveBtn, pressed && styles.catMoveBtnPressed]}
+                      onPress={() => openMoveCat(item.category)}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="arrow-redo-outline" size={16} color={COLORS.textSecondary} />
+                    </Pressable>
+                  )}
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={16}
@@ -203,10 +418,37 @@ export default function ProviderScreen({ route, navigation }) {
                         <View style={styles.productBullet} />
                         <Text style={styles.productName}>{product.name}</Text>
 
-                        {userRole === 'jefe' && (
+                        <View style={styles.actionButtons}>
+                          {/* Editar */}
                           <Pressable
                             style={({ pressed }) => [
-                              styles.deleteButton,
+                              styles.actionButton,
+                              pressed && styles.editButtonPressed,
+                            ]}
+                            onPress={() => openEditModal(product)}
+                            disabled={deletingId === product.id}
+                          >
+                            <Ionicons name="create-outline" size={17} color={COLORS.accent} />
+                          </Pressable>
+
+                          {/* Mover a otra categoría */}
+                          {derivedCategories.length > 1 && (
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.actionButton,
+                                pressed && styles.moveButtonPressed,
+                              ]}
+                              onPress={() => openMoveProd(product)}
+                              disabled={deletingId === product.id}
+                            >
+                              <Ionicons name="arrow-redo-outline" size={17} color={COLORS.textSecondary} />
+                            </Pressable>
+                          )}
+
+                          {/* Eliminar */}
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.actionButton,
                               pressed && styles.deleteButtonPressed,
                             ]}
                             onPress={() => confirmDeleteProduct(product)}
@@ -218,7 +460,7 @@ export default function ProviderScreen({ route, navigation }) {
                               <Ionicons name="trash-outline" size={17} color={COLORS.danger} />
                             )}
                           </Pressable>
-                        )}
+                        </View>
                       </View>
                     ))}
                   </View>
@@ -247,6 +489,251 @@ export default function ProviderScreen({ route, navigation }) {
           </Pressable>
         )}
       </View>
+
+      {/* Modal crear categoría */}
+      <Modal
+        visible={createCatVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeSmallModal(setCreateCatVisible)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeSmallModal(setCreateCatVisible)}>
+          <Animated.View
+            style={[styles.modalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          >
+            <Pressable onPress={() => {}}>
+              <Text style={styles.modalTitle}>Nueva categoría</Text>
+              <Text style={styles.modalSubtitle}>
+                La categoría se va a crear aunque no tenga artículos todavía.
+              </Text>
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Ej: Gaseosas"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newCatName}
+                  onChangeText={setNewCatName}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveCreateCat}
+                  underlineColorAndroid="transparent"
+                />
+              </KeyboardAvoidingView>
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [styles.modalCancelButton, pressed && styles.modalCancelButtonPressed]}
+                  onPress={() => closeSmallModal(setCreateCatVisible)}
+                  disabled={createCatSaving}
+                >
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    createCatSaving && styles.modalConfirmButtonDisabled,
+                    pressed && !createCatSaving && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveCreateCat}
+                  disabled={createCatSaving}
+                >
+                  <Text style={styles.modalConfirmText}>
+                    {createCatSaving ? 'Guardando...' : 'Crear'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal mover categoría */}
+      <Modal
+        visible={moveCatVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeSmallModal(setMoveCatVisible)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeSmallModal(setMoveCatVisible)}>
+          <Animated.View
+            style={[styles.modalCard, styles.moveModalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          >
+            <Pressable onPress={() => {}}>
+              <Text style={styles.modalTitle}>Mover categoría</Text>
+              {movingCategory && (
+                <Text style={styles.modalSubtitle}>
+                  Todos los artículos de "{movingCategory}" se van a mover a la categoría que elijas.
+                </Text>
+              )}
+              <ScrollView style={styles.moveCatList} showsVerticalScrollIndicator={false}>
+                {derivedCategories.filter((c) => c !== movingCategory).map((cat) => {
+                  const selected = moveCatTarget === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      style={[styles.catPickerBtn, selected && styles.catPickerBtnActive]}
+                      onPress={() => setMoveCatTarget(cat)}
+                    >
+                      {selected && <View style={styles.catPickerCheck} />}
+                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]}>{cat}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [styles.modalCancelButton, pressed && styles.modalCancelButtonPressed]}
+                  onPress={() => closeSmallModal(setMoveCatVisible)}
+                  disabled={moveCatSaving}
+                >
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    moveCatSaving && styles.modalConfirmButtonDisabled,
+                    pressed && !moveCatSaving && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveMoveCat}
+                  disabled={moveCatSaving}
+                >
+                  <Text style={styles.modalConfirmText}>{moveCatSaving ? 'Moviendo...' : 'Mover'}</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal mover artículo a otra categoría */}
+      <Modal
+        visible={moveProdVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeSmallModal(setMoveProdVisible)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeSmallModal(setMoveProdVisible)}>
+          <Animated.View
+            style={[styles.modalCard, styles.moveModalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          >
+            <Pressable onPress={() => {}}>
+              <Text style={styles.modalTitle}>Mover artículo</Text>
+              {movingProduct && (
+                <Text style={styles.modalSubtitle}>
+                  "{movingProduct.name}" → elegí la categoría destino
+                </Text>
+              )}
+              <ScrollView style={styles.moveCatList} showsVerticalScrollIndicator={false}>
+                {derivedCategories.filter((c) => c !== movingProduct?.category).map((cat) => {
+                  const selected = moveProdTarget === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      style={[styles.catPickerBtn, selected && styles.catPickerBtnActive]}
+                      onPress={() => setMoveProdTarget(cat)}
+                    >
+                      {selected && <View style={styles.catPickerCheck} />}
+                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]}>{cat}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [styles.modalCancelButton, pressed && styles.modalCancelButtonPressed]}
+                  onPress={() => closeSmallModal(setMoveProdVisible)}
+                  disabled={moveProdSaving}
+                >
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    moveProdSaving && styles.modalConfirmButtonDisabled,
+                    pressed && !moveProdSaving && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveMoveProd}
+                  disabled={moveProdSaving}
+                >
+                  <Text style={styles.modalConfirmText}>{moveProdSaving ? 'Moviendo...' : 'Mover'}</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal editar nombre de artículo */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeEditModal()}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeEditModal()}>
+          <Animated.View
+            style={[
+              styles.modalCard,
+              {
+                opacity: opacityAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <Pressable onPress={() => {}}>
+              <Text style={styles.modalTitle}>Editar artículo</Text>
+              {editingProduct && (
+                <Text style={styles.modalSubtitle}>
+                  Nombre actual: {editingProduct.name}
+                </Text>
+              )}
+
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Nuevo nombre..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={editName}
+                  onChangeText={setEditName}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveEdit}
+                  underlineColorAndroid="transparent"
+                />
+              </KeyboardAvoidingView>
+
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalCancelButton,
+                    pressed && styles.modalCancelButtonPressed,
+                  ]}
+                  onPress={() => closeEditModal()}
+                  disabled={editSaving}
+                >
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    editSaving && styles.modalConfirmButtonDisabled,
+                    pressed && !editSaving && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveEdit}
+                  disabled={editSaving}
+                >
+                  <Text style={styles.modalConfirmText}>
+                    {editSaving ? 'Guardando...' : 'Guardar'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -441,16 +928,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  deleteButton: {
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  actionButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
+  },
+  editButtonPressed: {
+    backgroundColor: COLORS.accentLight,
+  },
+  moveButtonPressed: {
+    backgroundColor: COLORS.borderLight,
   },
   deleteButtonPressed: {
     backgroundColor: '#FEE2E2',
+  },
+  catMoveBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
+  },
+  catMoveBtnPressed: {
+    backgroundColor: COLORS.borderLight,
+  },
+  moveModalCard: {
+    maxHeight: '75%',
+  },
+  moveCatList: {
+    maxHeight: 220,
+    marginBottom: 14,
+  },
+  catPickerBtn: {
+    backgroundColor: COLORS.cardAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    marginBottom: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  catPickerBtnActive: {
+    backgroundColor: COLORS.accentLight,
+    borderColor: COLORS.accent,
+  },
+  catPickerCheck: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
+  },
+  catPickerText: {
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  catPickerTextActive: {
+    color: COLORS.accentDark,
+    fontWeight: '700',
   },
   buttonsContainer: {
     marginTop: 10,
@@ -490,5 +1035,90 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 15,
+  },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 16,
+    lineHeight: 17,
+  },
+  modalInput: {
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.cardAlt,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalCancelButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCancelButtonPressed: {
+    backgroundColor: COLORS.cardAlt,
+  },
+  modalCancelText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalConfirmButton: {
+    flex: 1,
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    shadowColor: COLORS.accentDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  modalConfirmButtonPressed: {
+    backgroundColor: COLORS.accentDark,
+  },
+  modalConfirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalConfirmText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
