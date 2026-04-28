@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { sendBroadcastNotification } from '../services/pushTokenService';
+import { getPushTokenStats, sendBroadcastNotification } from '../services/pushTokenService';
 import { COLORS } from '../theme';
 
 export default function SendNotificationScreen() {
@@ -20,9 +20,19 @@ export default function SendNotificationScreen() {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null); // { sent, errors } | 'error'
+  const [tokenStats, setTokenStats] = useState(null);
 
   const successScale = useRef(new Animated.Value(0.8)).current;
   const successOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    loadTokenStats();
+  }, []);
+
+  async function loadTokenStats() {
+    const stats = await getPushTokenStats();
+    setTokenStats(stats);
+  }
 
   async function handleSend() {
     if (!body.trim()) return;
@@ -32,13 +42,20 @@ export default function SendNotificationScreen() {
     try {
       const res = await sendBroadcastNotification(title.trim() || 'El Viejo León', body.trim());
       setResult(res);
+      loadTokenStats();
       Animated.parallel([
         Animated.spring(successScale, { toValue: 1, useNativeDriver: true, tension: 140, friction: 8 }),
         Animated.timing(successOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     } catch (err) {
       const code = err?.message;
-      setResult(code === 'NO_TOKENS' ? 'no_tokens' : 'error');
+      if (code === 'NO_TOKENS') setResult('no_tokens');
+      else if (code === 'NETWORK_ERROR') setResult('network');
+      else if (code === 'FUNCTIONS_NOT_DEPLOYED') setResult('functions');
+      else if (code === 'PERMISSION_DENIED') setResult('permission');
+      else if (code === 'UNAUTHENTICATED') setResult('auth');
+      else if (code === 'PUSH_SERVICE_ERROR') setResult('push_service');
+      else setResult('error');
       successScale.setValue(0.8);
       successOpacity.setValue(0);
       Animated.parallel([
@@ -77,6 +94,17 @@ export default function SendNotificationScreen() {
         </View>
 
         {/* Título */}
+        <View style={styles.statsBanner}>
+          <Ionicons name="phone-portrait-outline" size={18} color={COLORS.textSecondary} />
+          <Text style={styles.statsText}>
+            {tokenStats
+              ? tokenStats.backendReady === false
+                ? 'Firebase Functions todavía no está desplegado'
+                : `${tokenStats.tokenCount} dispositivo${tokenStats.tokenCount !== 1 ? 's' : ''} registrado${tokenStats.tokenCount !== 1 ? 's' : ''} de ${tokenStats.users} usuario${tokenStats.users !== 1 ? 's' : ''}`
+              : 'Revisando dispositivos registrados...'}
+          </Text>
+        </View>
+
         <Text style={styles.label}>Título</Text>
         <TextInput
           style={styles.input}
@@ -148,7 +176,47 @@ export default function SendNotificationScreen() {
                 <Ionicons name="phone-portrait-outline" size={28} color={COLORS.accent} style={styles.resultIcon} />
                 <Text style={styles.resultTitle}>Sin dispositivos</Text>
                 <Text style={styles.resultBody}>
-                  Ningún dispositivo tiene registrado su token todavía. Abrí la app en cada celular al menos una vez.
+                  Ningún dispositivo tiene registrado su token todavía. Instalá la APK nueva en cada celular y abrí la app al menos una vez.
+                </Text>
+              </>
+            ) : result === 'network' ? (
+              <>
+                <Ionicons name="wifi-outline" size={28} color="#ef4444" style={styles.resultIcon} />
+                <Text style={styles.resultTitle}>Sin conexión</Text>
+                <Text style={styles.resultBody}>
+                  No se pudo contactar al servidor. Verificá tu conexión a internet e intentá de nuevo.
+                </Text>
+              </>
+            ) : result === 'functions' ? (
+              <>
+                <Ionicons name="cloud-upload-outline" size={28} color="#ef4444" style={styles.resultIcon} />
+                <Text style={styles.resultTitle}>Falta desplegar Firebase</Text>
+                <Text style={styles.resultBody}>
+                  La app ya está preparada, pero la función de notificaciones todavía no está publicada en Firebase.
+                </Text>
+              </>
+            ) : result === 'permission' ? (
+              <>
+                <Ionicons name="lock-closed-outline" size={28} color="#ef4444" style={styles.resultIcon} />
+                <Text style={styles.resultTitle}>Sin permiso</Text>
+                <Text style={styles.resultBody}>
+                  Solo santipiedrabuena@gmail.com puede enviar notificaciones globales.
+                </Text>
+              </>
+            ) : result === 'auth' ? (
+              <>
+                <Ionicons name="person-circle-outline" size={28} color="#ef4444" style={styles.resultIcon} />
+                <Text style={styles.resultTitle}>Sesión vencida</Text>
+                <Text style={styles.resultBody}>
+                  Cerrá sesión, volvé a entrar e intentá mandar la notificación otra vez.
+                </Text>
+              </>
+            ) : result === 'push_service' ? (
+              <>
+                <Ionicons name="cloud-offline-outline" size={28} color="#ef4444" style={styles.resultIcon} />
+                <Text style={styles.resultTitle}>Expo no aceptó el envío</Text>
+                <Text style={styles.resultBody}>
+                  Revisá que la APK tenga credenciales FCM configuradas y que los celulares hayan abierto la app nueva.
                 </Text>
               </>
             ) : (
@@ -156,7 +224,7 @@ export default function SendNotificationScreen() {
                 <Ionicons name="alert-circle-outline" size={28} color="#ef4444" style={styles.resultIcon} />
                 <Text style={styles.resultTitle}>Error al enviar</Text>
                 <Text style={styles.resultBody}>
-                  No se pudo enviar la notificación. Verificá la conexión a internet e intentá de nuevo.
+                  Ocurrió un error inesperado. Intentá de nuevo en unos minutos.
                 </Text>
               </>
             )}
@@ -191,6 +259,24 @@ const styles = StyleSheet.create({
     color: COLORS.accentDark,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  statsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 18,
+    gap: 8,
+  },
+  statsText: {
+    flex: 1,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   label: {
     fontSize: 13,

@@ -23,18 +23,32 @@ function slugify(text) {
 
 export async function getCategoriesByProvider(providerId) {
   try {
-    const q = query(
+    const productsQuery = query(
       collection(db, 'products'),
       where('providerId', '==', providerId)
     );
+    const standaloneQuery = query(
+      collection(db, 'providerCategories'),
+      where('providerId', '==', providerId)
+    );
 
-    const snapshot = await getDocs(q);
+    const [productsSnapshot, standaloneSnapshot] = await Promise.all([
+      getDocs(productsQuery),
+      getDocs(standaloneQuery),
+    ]);
 
     const categoriesSet = new Set();
 
-    snapshot.docs.forEach((doc) => {
+    productsSnapshot.docs.forEach((doc) => {
       const data = doc.data();
       const category = data.category?.trim();
+      if (category) {
+        categoriesSet.add(category);
+      }
+    });
+
+    standaloneSnapshot.docs.forEach((doc) => {
+      const category = doc.data().name?.trim();
       if (category) {
         categoriesSet.add(category);
       }
@@ -117,12 +131,44 @@ export async function moveProductToCategory(productId, newCategory) {
 export async function renameCategory(providerId, oldCategory, newCategory) {
   const cleanNew = String(newCategory).trim();
   if (!cleanNew) throw new Error('MISSING_CATEGORY_NAME');
-  const q = query(
+  const productsQuery = query(
     collection(db, 'products'),
     where('providerId', '==', providerId),
     where('category', '==', oldCategory)
   );
-  const snapshot = await getDocs(q);
-  await Promise.all(snapshot.docs.map((d) => updateDoc(d.ref, { category: cleanNew })));
+  const productsSnapshot = await getDocs(productsQuery);
+  const oldStandaloneRef = doc(db, 'providerCategories', `${slugify(providerId)}-${slugify(oldCategory)}`);
+  const newStandaloneRef = doc(db, 'providerCategories', `${slugify(providerId)}-${slugify(cleanNew)}`);
+
+  await Promise.all([
+    ...productsSnapshot.docs.map((d) => updateDoc(d.ref, { category: cleanNew })),
+    setDoc(newStandaloneRef, { providerId, name: cleanNew }, { merge: true }),
+    deleteDoc(oldStandaloneRef).catch(() => {}),
+  ]);
+
   return cleanNew;
+}
+
+export async function deleteCategoryByProvider(providerId, category) {
+  const cleanCategory = String(category).trim();
+
+  if (!providerId) throw new Error('MISSING_PROVIDER_ID');
+  if (!cleanCategory) throw new Error('MISSING_CATEGORY_NAME');
+
+  const productsQuery = query(
+    collection(db, 'products'),
+    where('providerId', '==', providerId),
+    where('category', '==', cleanCategory)
+  );
+  const productsSnapshot = await getDocs(productsQuery);
+  const standaloneRef = doc(db, 'providerCategories', `${slugify(providerId)}-${slugify(cleanCategory)}`);
+
+  await Promise.all([
+    ...productsSnapshot.docs.map((d) => deleteDoc(d.ref)),
+    deleteDoc(standaloneRef).catch(() => {}),
+  ]);
+
+  return {
+    deletedProducts: productsSnapshot.docs.length,
+  };
 }

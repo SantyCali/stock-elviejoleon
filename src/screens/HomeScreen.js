@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
+  Alert,
   FlatList,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,7 +14,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getProviders } from '../services/providerService';
-import { hasOrderToday } from '../services/orderService';
+import { hasOrderDoneToday, markOrderDoneToday } from '../services/orderService';
 import {
   cancelAllReminders,
   requestNotificationPermissions,
@@ -40,10 +41,6 @@ export default function HomeScreen({ navigation }) {
 
   const todayName = getTodayName();
   const todayLabel = getTodayLabel();
-
-  // Animación del modal de campana
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
 
   // ── Cargar datos y actualizar notificaciones ────────────────────────────────
 
@@ -73,18 +70,12 @@ export default function HomeScreen({ navigation }) {
       const statusList = await Promise.all(
         providersToday.map(async (provider) => ({
           provider,
-          done: await hasOrderToday(provider.id),
+          done: await hasOrderDoneToday(provider.id),
         }))
       );
 
       setTodayStatus(statusList);
-
-      const pending = statusList.filter((s) => !s.done);
-      if (pending.length > 0) {
-        await scheduleOrderReminders(pending.map((s) => s.provider.name));
-      } else {
-        await cancelAllReminders();
-      }
+      await updateOrderReminders(statusList);
     } catch (error) {
       console.log('Error cargando proveedores:', error);
     } finally {
@@ -92,10 +83,52 @@ export default function HomeScreen({ navigation }) {
     }
   }
 
+  async function updateOrderReminders(statusList) {
+    const pending = statusList.filter((s) => !s.done);
+    if (pending.length > 0) {
+      await scheduleOrderReminders(pending.map((s) => s.provider.name));
+    } else {
+      await cancelAllReminders();
+    }
+  }
+
+  function confirmMarkOrderDone(provider) {
+    Alert.alert(
+      'Pedido hecho',
+      `¿Ya se hizo el pedido para ${provider.name}?`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí',
+          onPress: () => handleMarkOrderDone(provider),
+        },
+      ]
+    );
+  }
+
+  async function handleMarkOrderDone(provider) {
+    try {
+      await markOrderDoneToday(provider);
+      const nextStatus = todayStatus.map((status) =>
+        status.provider.id === provider.id ? { ...status, done: true } : status
+      );
+      setTodayStatus(nextStatus);
+      await updateOrderReminders(nextStatus);
+    } catch (error) {
+      console.log('Error marcando pedido como hecho:', error);
+      Alert.alert('Error', 'No se pudo marcar el pedido como hecho.');
+    }
+  }
+
   // ── Actualizar header cuando cambia el conteo pendiente ────────────────────
 
   const pendingCount = useMemo(
     () => todayStatus.filter((s) => !s.done).length,
+    [todayStatus]
+  );
+
+  const pendingStatus = useMemo(
+    () => todayStatus.filter((s) => !s.done),
     [todayStatus]
   );
 
@@ -146,19 +179,10 @@ export default function HomeScreen({ navigation }) {
 
   function openBellModal() {
     setBellVisible(true);
-    scaleAnim.setValue(0.88);
-    opacityAnim.setValue(0);
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 130, friction: 8 }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
-    ]).start();
   }
 
   function closeBellModal() {
-    Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.88, duration: 130, useNativeDriver: true }),
-      Animated.timing(opacityAnim, { toValue: 0, duration: 130, useNativeDriver: true }),
-    ]).start(() => setBellVisible(false));
+    setBellVisible(false);
   }
 
   // ── Datos derivados ────────────────────────────────────────────────────────
@@ -265,17 +289,12 @@ export default function HomeScreen({ navigation }) {
       <Modal
         visible={bellVisible}
         transparent
-        animationType="none"
+        animationType="fade"
         statusBarTranslucent
         onRequestClose={closeBellModal}
       >
         <Pressable style={styles.modalOverlay} onPress={closeBellModal}>
-          <Animated.View
-            style={[
-              styles.modalCard,
-              { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
-            ]}
-          >
+          <View style={styles.modalCard}>
             <Pressable onPress={() => {}}>
               {/* Header del modal */}
               <View style={styles.modalHeader}>
@@ -292,13 +311,19 @@ export default function HomeScreen({ navigation }) {
               </View>
 
               {/* Lista */}
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
               {todayStatus.length === 0 ? (
                 <View style={styles.modalEmpty}>
                   <Text style={styles.modalEmptyIcon}>📭</Text>
                   <Text style={styles.modalEmptyText}>No hay proveedores para hoy.</Text>
                 </View>
+              ) : pendingStatus.length === 0 ? (
+                <View style={styles.modalEmpty}>
+                  <Ionicons name="checkmark-circle" size={34} color="#16a34a" style={styles.modalEmptyIcon} />
+                  <Text style={styles.modalEmptyText}>Todos los pedidos están hechos.</Text>
+                </View>
               ) : (
-                todayStatus.map(({ provider, done }) => (
+                pendingStatus.map(({ provider }) => (
                   <Pressable
                     key={provider.id}
                     style={({ pressed }) => [
@@ -310,16 +335,28 @@ export default function HomeScreen({ navigation }) {
                       setTimeout(() => navigation.navigate('Provider', { provider }), 180);
                     }}
                   >
-                    <View style={[styles.modalItemDot, done && styles.modalItemDotDone]} />
+                    <View style={styles.modalItemDot} />
                     <Text style={styles.modalItemName}>{provider.name}</Text>
-                    <Ionicons
-                      name={done ? 'checkmark-circle' : 'time-outline'}
-                      size={20}
-                      color={done ? '#16a34a' : COLORS.accent}
-                    />
+                    <View style={styles.modalItemActions}>
+                      <Ionicons name="time-outline" size={20} color={COLORS.accent} />
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.markDoneBtn,
+                          pressed && styles.markDoneBtnPressed,
+                        ]}
+                        onPress={(event) => {
+                          event.stopPropagation?.();
+                          confirmMarkOrderDone(provider);
+                        }}
+                        hitSlop={6}
+                      >
+                        <Ionicons name="checkmark" size={18} color="#16a34a" />
+                      </Pressable>
+                    </View>
                   </Pressable>
                 ))
               )}
+              </ScrollView>
 
               {/* Resumen */}
               {todayStatus.length > 0 && (
@@ -332,7 +369,7 @@ export default function HomeScreen({ navigation }) {
                 </View>
               )}
             </Pressable>
-          </Animated.View>
+          </View>
         </Pressable>
       </Modal>
     </View>
@@ -495,7 +532,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: 120,
   },
 
   // Tarjeta proveedor
@@ -600,6 +637,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
+    maxHeight: '82%',
     backgroundColor: COLORS.card,
     borderRadius: 20,
     padding: 20,
@@ -608,6 +646,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 20,
     elevation: 10,
+  },
+  modalList: {
+    maxHeight: 360,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -664,6 +705,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  modalItemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  markDoneBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markDoneBtnPressed: {
+    backgroundColor: '#BBF7D0',
   },
   modalFooter: {
     marginTop: 4,

@@ -1,7 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { Platform } from 'react-native';
+import { httpsCallable } from 'firebase/functions';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, functions } from '../config/firebase';
 
 async function getExpoPushToken() {
   try {
@@ -14,70 +16,85 @@ async function getExpoPushToken() {
       : await Notifications.getExpoPushTokenAsync();
 
     return tokenData.data;
-  } catch (error) {
-    console.log('No se pudo obtener Expo push token:', error?.message);
+  } catch {
+    // En Expo Go SDK 53+ los push tokens remotos no están disponibles — solo funciona en builds
     return null;
   }
 }
 
 export async function savePushToken(uid) {
   try {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') return;
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') return;
 
     const token = await getExpoPushToken();
     if (!token) return;
 
-    await setDoc(doc(db, 'users', uid), { pushToken: token }, { merge: true });
-  } catch (error) {
-    console.log('Error guardando push token:', error?.message);
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId ??
+      null;
+
+    await setDoc(
+      doc(db, 'users', uid),
+      {
+        pushToken: token,
+        pushTokenPlatform: Platform.OS,
+        pushTokenProjectId: projectId,
+        pushTokenUpdatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // silencioso — no disponible en Expo Go
   }
 }
 
-export async function getAllPushTokens() {
+export async function getPushTokenStats() {
   try {
-    const snapshot = await getDocs(collection(db, 'users'));
-    return snapshot.docs
-      .map((d) => d.data().pushToken)
-      .filter(Boolean);
+    const getStats = httpsCallable(functions, 'getPushTokenStats');
+    return (await getStats()).data;
   } catch (error) {
-    console.log('Error obteniendo push tokens:', error?.message);
-    return [];
+    const code = String(error?.code || '');
+    if (code.includes('not-found') || code.includes('internal')) {
+      return {
+        users: 0,
+        tokenCount: 0,
+        backendReady: false,
+      };
+    }
+
+    return {
+      users: 0,
+      tokenCount: 0,
+      backendReady: true,
+    };
   }
 }
 
 export async function sendBroadcastNotification(title, body) {
-  const tokens = await getAllPushTokens();
+  try {
+    const sendNotificationToAll = httpsCallable(functions, 'sendNotificationToAll');
+    const result = await sendNotificationToAll({
+      title,
+      body,
+    });
 
-  if (tokens.length === 0) {
-    throw new Error('NO_TOKENS');
+    return result.data;
+  } catch (error) {
+    const code = String(error?.code || '');
+    if (code.includes('not-found')) throw new Error('FUNCTIONS_NOT_DEPLOYED');
+    if (code.includes('failed-precondition')) throw new Error('NO_TOKENS');
+    if (code.includes('unavailable')) throw new Error('NETWORK_ERROR');
+    if (code.includes('permission-denied')) throw new Error('PERMISSION_DENIED');
+    if (code.includes('unauthenticated')) throw new Error('UNAUTHENTICATED');
+    throw new Error('PUSH_SERVICE_ERROR');
   }
-
-  const messages = tokens.map((token) => ({
-    to: token,
-    title,
-    body,
-    sound: 'default',
-    priority: 'high',
-  }));
-
-  const response = await fetch('https://exp.host/push/send', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Accept-Encoding': 'gzip, deflate',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(messages),
-  });
-
-  if (!response.ok) {
-    throw new Error('NETWORK_ERROR');
-  }
-
-  const result = await response.json();
-  const data = Array.isArray(result.data) ? result.data : [];
-  const errors = data.filter((r) => r.status === 'error');
-
-  return { sent: tokens.length, errors: errors.length };
 }

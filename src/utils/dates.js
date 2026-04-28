@@ -59,3 +59,12 @@ export function getTodayLabel() {
 
   return `${dayName}, ${dayNumber} de ${monthName}`;
 }
+
+export function getTodayKey() {
+  const today = getArgentinaDate();
+  const year = today.getUTCFullYear();
+  const month = String(today.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(today.getUTCDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}

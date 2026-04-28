@@ -7,6 +7,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import DrawerNavigator from './DrawerNavigator';
 import { observeAuthState } from '../services/authService';
+import { savePushToken } from '../services/pushTokenService';
 import { COLORS } from '../theme';
 
 const Stack = createNativeStackNavigator();
@@ -27,6 +28,9 @@ export default function AppNavigator() {
     const unsubscribe = observeAuthState((firebaseUser) => {
       setUser(firebaseUser);
       setCheckingAuth(false);
+      if (firebaseUser) {
+        savePushToken(firebaseUser.uid);
+      }
     });
     return unsubscribe;
   }, []);

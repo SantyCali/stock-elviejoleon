@@ -16,6 +16,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.elviejoleon.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +26,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "owner": "santycali",
+    "extra": {
+      "eas": {
+        "projectId": "5b60c8a7-25ee-4b4f-91b5-29d1a7a35dbe"
+      }
+    },
     "plugins": [
       "expo-sqlite",
       [
@@ -32,6 +39,7 @@
         {
           "icon": "./assets/icon.png",
           "color": "#D97706",
+          "defaultChannel": "pedidos",
           "sounds": []
         }
       ]

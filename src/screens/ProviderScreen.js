@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,18 +19,26 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProductsByProvider } from '../services/productService';
-import { createStandaloneCategory, deleteProduct, getStandaloneCategories, moveProductToCategory, renameCategory, updateProductName } from '../services/productAdminService';
+import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, getStandaloneCategories, moveProductToCategory, renameCategory, updateProductName } from '../services/productAdminService';
+import { deleteProviderById, updateProviderDetails } from '../services/providerService';
+import { hasOrderDoneToday } from '../services/orderService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
+
+const MAX_FONT_SCALE = 1.2;
+const DAYS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const FREQUENCIES = ['semanal', 'quincenal', 'mensual'];
 
 export default function ProviderScreen({ route, navigation }) {
   const { provider } = route.params;
   const insets = useSafeAreaInsets();
+  const [currentProvider, setCurrentProvider] = useState(provider);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [deletingId, setDeletingId] = useState(null);
+  const [orderDoneToday, setOrderDoneToday] = useState(false);
 
   // Edit modal state
   const [editingProduct, setEditingProduct] = useState(null);
@@ -39,6 +48,14 @@ export default function ProviderScreen({ route, navigation }) {
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
+  // Provider name modal state
+  const [providerEditVisible, setProviderEditVisible] = useState(false);
+  const [providerEditName, setProviderEditName] = useState(provider.name || '');
+  const [providerEditDays, setProviderEditDays] = useState(provider.days || []);
+  const [providerEditFrequency, setProviderEditFrequency] = useState(provider.frequency || 'semanal');
+  const [providerEditSaving, setProviderEditSaving] = useState(false);
+  const [providerDeleteSaving, setProviderDeleteSaving] = useState(false);
+
   // Standalone categories
   const [standaloneCategories, setStandaloneCategories] = useState([]);
 
@@ -46,6 +63,13 @@ export default function ProviderScreen({ route, navigation }) {
   const [createCatVisible, setCreateCatVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [createCatSaving, setCreateCatSaving] = useState(false);
+
+  // Edit category modal
+  const [editCatVisible, setEditCatVisible] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatSaving, setEditCatSaving] = useState(false);
+  const [deleteCatSaving, setDeleteCatSaving] = useState(false);
 
   // Move category modal
   const [moveCatVisible, setMoveCatVisible] = useState(false);
@@ -62,21 +86,23 @@ export default function ProviderScreen({ route, navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [provider.id])
+    }, [currentProvider.id])
   );
 
   async function loadData() {
     try {
       setLoading(true);
       const currentUser = getCurrentUser();
-      const [data, extra, profile] = await Promise.all([
-        getProductsByProvider(provider.id),
-        getStandaloneCategories(provider.id),
+      const [data, extra, profile, doneToday] = await Promise.all([
+        getProductsByProvider(currentProvider.id),
+        getStandaloneCategories(currentProvider.id),
         currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
+        hasOrderDoneToday(currentProvider.id),
       ]);
       setProducts(data);
       setStandaloneCategories(extra);
       setUserRole(profile?.role || null);
+      setOrderDoneToday(doneToday);
     } catch (error) {
       console.log('Error cargando proveedor:', error);
     } finally {
@@ -189,6 +215,77 @@ export default function ProviderScreen({ route, navigation }) {
     }
   }
 
+  function openProviderEditModal() {
+    setProviderEditName(currentProvider.name || '');
+    setProviderEditDays(currentProvider.days || []);
+    setProviderEditFrequency(currentProvider.frequency || 'semanal');
+    openSmallModal(setProviderEditVisible, () => {});
+  }
+
+  function toggleProviderEditDay(day) {
+    setProviderEditDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  }
+
+  async function handleSaveProviderName() {
+    const trimmed = providerEditName.trim();
+    if (!trimmed) {
+      Alert.alert('Falta dato', 'Escribí un nombre para el proveedor.');
+      return;
+    }
+    if (providerEditDays.length === 0) {
+      Alert.alert('Falta dato', 'Elegí al menos un día de pedido.');
+      return;
+    }
+
+    try {
+      setProviderEditSaving(true);
+      const saved = await updateProviderDetails(currentProvider.id, {
+        name: trimmed,
+        days: providerEditDays,
+        frequency: providerEditFrequency,
+      });
+      const nextProvider = { ...currentProvider, ...saved };
+      setCurrentProvider(nextProvider);
+      navigation.setParams({ provider: nextProvider });
+      closeSmallModal(setProviderEditVisible);
+    } catch (error) {
+      console.log('Error editando proveedor:', error);
+      Alert.alert('Error', 'No se pudo guardar el nombre del proveedor.');
+    } finally {
+      setProviderEditSaving(false);
+    }
+  }
+
+  function confirmDeleteProvider() {
+    Alert.alert(
+      'Eliminar proveedor',
+      `¿Seguro que querés eliminar "${currentProvider.name}"? También se eliminarán sus categorías, artículos, pedidos e historial asociado.`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí, eliminar',
+          style: 'destructive',
+          onPress: handleDeleteProvider,
+        },
+      ]
+    );
+  }
+
+  async function handleDeleteProvider() {
+    try {
+      setProviderDeleteSaving(true);
+      await deleteProviderById(currentProvider.id);
+      closeSmallModal(setProviderEditVisible, () => navigation.goBack());
+    } catch (error) {
+      console.log('Error eliminando proveedor:', error);
+      Alert.alert('Error', 'No se pudo eliminar el proveedor.');
+    } finally {
+      setProviderDeleteSaving(false);
+    }
+  }
+
   function openSmallModal(setVisible, setup) {
     scaleAnim.setValue(0.85);
     opacityAnim.setValue(0);
@@ -220,7 +317,7 @@ export default function ProviderScreen({ route, navigation }) {
     }
     try {
       setCreateCatSaving(true);
-      await createStandaloneCategory(provider.id, trimmed);
+      await createStandaloneCategory(currentProvider.id, trimmed);
       setStandaloneCategories((prev) =>
         Array.from(new Set([...prev, trimmed])).sort((a, b) => a.localeCompare(b))
       );
@@ -234,17 +331,92 @@ export default function ProviderScreen({ route, navigation }) {
   }
 
   function openMoveCat(category) {
+    if (derivedCategories.filter((c) => c !== category).length === 0) {
+      Alert.alert('Sin destino', 'Creá otra categoría para poder mover esta categoría completa.');
+      return;
+    }
+
     openSmallModal(setMoveCatVisible, () => {
       setMovingCategory(category);
       setMoveCatTarget('');
     });
   }
 
+  function openEditCat(category) {
+    openSmallModal(setEditCatVisible, () => {
+      setEditingCategory(category);
+      setEditCatName(category);
+    });
+  }
+
+  async function handleSaveEditCat() {
+    const trimmed = editCatName.trim();
+    if (!trimmed) { Alert.alert('Falta dato', 'Escribí un nombre para la categoría.'); return; }
+    if (trimmed === editingCategory) { closeSmallModal(setEditCatVisible); return; }
+    if (derivedCategories.some((c) => c !== editingCategory && c.toLowerCase() === trimmed.toLowerCase())) {
+      Alert.alert('Ya existe', 'Ya hay una categoría con ese nombre.'); return;
+    }
+
+    try {
+      setEditCatSaving(true);
+      await renameCategory(currentProvider.id, editingCategory, trimmed);
+      setProducts((prev) =>
+        prev.map((p) => p.category === editingCategory ? { ...p, category: trimmed } : p)
+      );
+      setStandaloneCategories((prev) =>
+        Array.from(new Set(prev.map((c) => c === editingCategory ? trimmed : c)))
+          .sort((a, b) => a.localeCompare(b))
+      );
+      closeSmallModal(setEditCatVisible);
+    } catch (error) {
+      console.log('Error editando categoría:', error);
+      Alert.alert('Error', 'No se pudo guardar el cambio.');
+    } finally {
+      setEditCatSaving(false);
+    }
+  }
+
+  function confirmDeleteCategory() {
+    if (!editingCategory) return;
+    const count = products.filter((p) => p.category === editingCategory).length;
+    const detail = count > 0
+      ? `También se eliminarán ${count} artículo${count !== 1 ? 's' : ''} de esta categoría.`
+      : 'La categoría no tiene artículos.';
+
+    Alert.alert(
+      'Eliminar categoría',
+      `¿Seguro que querés eliminar "${editingCategory}"? ${detail}`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí, eliminar',
+          style: 'destructive',
+          onPress: handleDeleteCategory,
+        },
+      ]
+    );
+  }
+
+  async function handleDeleteCategory() {
+    try {
+      setDeleteCatSaving(true);
+      await deleteCategoryByProvider(currentProvider.id, editingCategory);
+      setProducts((prev) => prev.filter((p) => p.category !== editingCategory));
+      setStandaloneCategories((prev) => prev.filter((c) => c !== editingCategory));
+      closeSmallModal(setEditCatVisible);
+    } catch (error) {
+      console.log('Error eliminando categoría:', error);
+      Alert.alert('Error', 'No se pudo eliminar la categoría.');
+    } finally {
+      setDeleteCatSaving(false);
+    }
+  }
+
   async function handleSaveMoveCat() {
     if (!moveCatTarget) { Alert.alert('Falta dato', 'Elegí una categoría destino.'); return; }
     try {
       setMoveCatSaving(true);
-      await renameCategory(provider.id, movingCategory, moveCatTarget);
+      await renameCategory(currentProvider.id, movingCategory, moveCatTarget);
       setProducts((prev) =>
         prev.map((p) => p.category === movingCategory ? { ...p, category: moveCatTarget } : p)
       );
@@ -258,6 +430,11 @@ export default function ProviderScreen({ route, navigation }) {
   }
 
   function openMoveProd(product) {
+    if (derivedCategories.filter((c) => c !== product.category).length === 0) {
+      Alert.alert('Sin destino', 'Creá otra categoría para poder mover este artículo.');
+      return;
+    }
+
     openSmallModal(setMoveProdVisible, () => {
       setMovingProduct(product);
       setMoveProdTarget('');
@@ -302,50 +479,95 @@ export default function ProviderScreen({ route, navigation }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [groupedProducts, standaloneCategories]);
 
+  const categoryRows = useMemo(() => {
+    const productsByCategory = new Map(
+      groupedProducts.map((group) => [group.category, group.items])
+    );
+
+    return derivedCategories.map((category) => ({
+      category,
+      items: productsByCategory.get(category) || [],
+    }));
+  }, [derivedCategories, groupedProducts]);
+
   return (
     <View style={styles.container}>
       {/* Header card */}
-      <View style={styles.headerCard}>
-        <View style={styles.headerAccentBar} />
+      <View style={[styles.headerCard, orderDoneToday && styles.headerCardDone]}>
+        <View style={[styles.headerAccentBar, orderDoneToday && styles.headerAccentBarDone]} />
         <View style={styles.headerContent}>
-          <Text style={styles.title}>{provider.name}</Text>
+          <View style={styles.titleRow}>
+            <Text
+              style={[styles.title, orderDoneToday && styles.titleDone]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+              numberOfLines={2}
+            >
+              {currentProvider.name}
+            </Text>
 
-          {!!provider.alias?.length && (
-            <Text style={styles.alias}>
-              También conocido como: {provider.alias.join(', ')}
+            {orderDoneToday && (
+              <View style={styles.doneBadge}>
+                <Text style={styles.doneBadgeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Pedido hecho</Text>
+              </View>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [styles.providerEditButton, pressed && styles.providerEditButtonPressed]}
+              onPress={openProviderEditModal}
+              hitSlop={8}
+            >
+              <Ionicons name="pencil" size={16} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
+            </Pressable>
+          </View>
+
+          {!!currentProvider.alias?.length && (
+            <Text style={[styles.alias, orderDoneToday && styles.aliasDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              También conocido como: {currentProvider.alias.join(', ')}
             </Text>
           )}
 
           <View style={styles.daysRow}>
-            <Text style={styles.daysLabel}>📅</Text>
-            {(provider.days || []).map((day) => (
-              <View key={day} style={styles.dayChip}>
-                <Text style={styles.dayChipText}>{day}</Text>
+            <Text style={styles.daysLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>📅</Text>
+            {(currentProvider.days || []).map((day) => (
+              <View key={day} style={[styles.dayChip, orderDoneToday && styles.dayChipDone]}>
+                <Text style={[styles.dayChipText, orderDoneToday && styles.dayChipTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>{day}</Text>
               </View>
             ))}
           </View>
 
           <View style={styles.topButtonsRow}>
             <Pressable
-              style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
-              onPress={() => navigation.navigate('AddProduct', { provider })}
+              style={({ pressed }) => [
+                styles.outlineButton,
+                orderDoneToday && styles.outlineButtonDone,
+                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+              ]}
+              onPress={() => navigation.navigate('AddProduct', { provider: currentProvider })}
             >
-              <Text style={styles.outlineButtonText}>+ Agregar artículo</Text>
+              <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Agregar artículo</Text>
             </Pressable>
 
             <Pressable
-              style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
+              style={({ pressed }) => [
+                styles.outlineButton,
+                orderDoneToday && styles.outlineButtonDone,
+                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+              ]}
               onPress={openCreateCat}
             >
-              <Text style={styles.outlineButtonText}>+ Categoría</Text>
+              <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Categoría</Text>
             </Pressable>
 
             {userRole === 'jefe' && (
               <Pressable
-                style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
-                onPress={() => navigation.navigate('ProviderOrderHistory', { provider })}
+                style={({ pressed }) => [
+                  styles.outlineButton,
+                  orderDoneToday && styles.outlineButtonDone,
+                  pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+                ]}
+                onPress={() => navigation.navigate('ProviderOrderHistory', { provider: currentProvider })}
               >
-                <Text style={styles.outlineButtonText}>Últimos 5 pedidos</Text>
+                <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>Últimos 5 pedidos</Text>
               </Pressable>
             )}
           </View>
@@ -353,27 +575,27 @@ export default function ProviderScreen({ route, navigation }) {
       </View>
 
       {/* Section label */}
-      <Text style={styles.sectionLabel}>
+      <Text style={styles.sectionLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         {loading
           ? 'Cargando...'
-          : `${products.length} producto${products.length !== 1 ? 's' : ''} en ${groupedProducts.length} categoría${groupedProducts.length !== 1 ? 's' : ''}`}
+          : `${products.length} producto${products.length !== 1 ? 's' : ''} en ${categoryRows.length} categoría${categoryRows.length !== 1 ? 's' : ''}`}
       </Text>
 
       {loading ? (
         <View style={styles.loaderBox}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.loaderText}>Cargando productos...</Text>
+          <Text style={styles.loaderText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cargando productos...</Text>
         </View>
-      ) : groupedProducts.length === 0 ? (
+      ) : categoryRows.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyIcon}>📦</Text>
-          <Text style={styles.emptyText}>
+          <Text style={styles.emptyIcon} maxFontSizeMultiplier={MAX_FONT_SCALE}>📦</Text>
+          <Text style={styles.emptyText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             Todavía no hay productos cargados para este proveedor.
           </Text>
         </View>
       ) : (
         <FlatList
-          data={groupedProducts}
+          data={categoryRows}
           keyExtractor={(item) => item.category}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
@@ -389,19 +611,24 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={() => toggleCategory(item.category)}
                 >
                   <View style={styles.categoryDot} />
-                  <Text style={styles.categoryTitle}>{item.category}</Text>
+                  <Text style={styles.categoryTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>{item.category}</Text>
                   <View style={styles.categoryCount}>
-                    <Text style={styles.categoryCountText}>{item.items.length}</Text>
+                    <Text style={styles.categoryCountText} maxFontSizeMultiplier={MAX_FONT_SCALE}>{item.items.length}</Text>
                   </View>
-                  {derivedCategories.length > 1 && (
-                    <Pressable
-                      style={({ pressed }) => [styles.catMoveBtn, pressed && styles.catMoveBtnPressed]}
-                      onPress={() => openMoveCat(item.category)}
-                      hitSlop={6}
-                    >
-                      <Ionicons name="arrow-redo-outline" size={16} color={COLORS.textSecondary} />
-                    </Pressable>
-                  )}
+                  <Pressable
+                    style={({ pressed }) => [styles.catMoveBtn, pressed && styles.catMoveBtnPressed]}
+                    onPress={() => openMoveCat(item.category)}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="arrow-redo-outline" size={16} color={COLORS.textSecondary} />
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.catEditBtn, pressed && styles.catEditBtnPressed]}
+                    onPress={() => openEditCat(item.category)}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="pencil" size={15} color={COLORS.accent} />
+                  </Pressable>
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={16}
@@ -416,7 +643,7 @@ export default function ProviderScreen({ route, navigation }) {
                     {item.items.map((product) => (
                       <View key={product.id} style={styles.productRow}>
                         <View style={styles.productBullet} />
-                        <Text style={styles.productName}>{product.name}</Text>
+                        <Text style={styles.productName} maxFontSizeMultiplier={MAX_FONT_SCALE}>{product.name}</Text>
 
                         <View style={styles.actionButtons}>
                           {/* Editar */}
@@ -432,18 +659,16 @@ export default function ProviderScreen({ route, navigation }) {
                           </Pressable>
 
                           {/* Mover a otra categoría */}
-                          {derivedCategories.length > 1 && (
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.actionButton,
-                                pressed && styles.moveButtonPressed,
-                              ]}
-                              onPress={() => openMoveProd(product)}
-                              disabled={deletingId === product.id}
-                            >
-                              <Ionicons name="arrow-redo-outline" size={17} color={COLORS.textSecondary} />
-                            </Pressable>
-                          )}
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.actionButton,
+                              pressed && styles.moveButtonPressed,
+                            ]}
+                            onPress={() => openMoveProd(product)}
+                            disabled={deletingId === product.id}
+                          >
+                            <Ionicons name="arrow-redo-outline" size={17} color={COLORS.textSecondary} />
+                          </Pressable>
 
                           {/* Eliminar */}
                           <Pressable
@@ -475,20 +700,141 @@ export default function ProviderScreen({ route, navigation }) {
       <View style={[styles.buttonsContainer, { paddingBottom: insets.bottom }]}>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={() => navigation.navigate('Stock', { provider })}
+          onPress={() => navigation.navigate('Stock', { provider: currentProvider })}
         >
-          <Text style={styles.buttonText}>📊  Cargar stock</Text>
+          <Text style={styles.buttonText} maxFontSizeMultiplier={MAX_FONT_SCALE}>📊  Cargar stock</Text>
         </Pressable>
 
         {userRole === 'jefe' && (
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => navigation.navigate('NewOrder', { provider })}
+            onPress={() => navigation.navigate('NewOrder', { provider: currentProvider })}
           >
-            <Text style={styles.secondaryButtonText}>🛒  Hacer pedido</Text>
+            <Text style={styles.secondaryButtonText} maxFontSizeMultiplier={MAX_FONT_SCALE}>🛒  Hacer pedido</Text>
           </Pressable>
         )}
       </View>
+
+      {/* Modal editar nombre de proveedor */}
+      <Modal
+        visible={providerEditVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeSmallModal(setProviderEditVisible)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeSmallModal(setProviderEditVisible)}>
+          <Animated.View
+            style={[styles.modalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+            <Pressable onPress={Keyboard.dismiss}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalTitleTextBox}>
+                  <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Editar proveedor</Text>
+              <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Cambiá el nombre del proveedor en Firebase.
+                  </Text>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalTrashButton,
+                    pressed && styles.modalTrashButtonPressed,
+                  ]}
+                  onPress={confirmDeleteProvider}
+                  disabled={providerEditSaving || providerDeleteSaving}
+                  hitSlop={8}
+                >
+                  {providerDeleteSaving ? (
+                    <ActivityIndicator size={15} color={COLORS.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+                  )}
+                </Pressable>
+              </View>
+
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Nombre del proveedor..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={providerEditName}
+                  onChangeText={setProviderEditName}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveProviderName}
+                  underlineColorAndroid="transparent"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                />
+              </KeyboardAvoidingView>
+
+              <Text style={styles.modalLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>Días de pedido</Text>
+              <View style={styles.pickerWrap}>
+                {DAYS.map((day) => {
+                  const selected = providerEditDays.includes(day);
+                  return (
+                    <Pressable
+                      key={day}
+                      style={[styles.pickerChip, selected && styles.pickerChipActive]}
+                      onPress={() => toggleProviderEditDay(day)}
+                    >
+                      <Text style={[styles.pickerChipText, selected && styles.pickerChipTextActive]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                        {day}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.modalLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>Frecuencia</Text>
+              <View style={styles.pickerWrap}>
+                {FREQUENCIES.map((frequency) => {
+                  const selected = providerEditFrequency === frequency;
+                  return (
+                    <Pressable
+                      key={frequency}
+                      style={[styles.pickerChip, selected && styles.pickerChipActive]}
+                      onPress={() => setProviderEditFrequency(frequency)}
+                    >
+                      <Text style={[styles.pickerChipText, selected && styles.pickerChipTextActive]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                        {frequency}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [styles.modalCancelButton, pressed && styles.modalCancelButtonPressed]}
+                  onPress={() => closeSmallModal(setProviderEditVisible)}
+                  disabled={providerEditSaving || providerDeleteSaving}
+                >
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    (providerEditSaving || providerEditDays.length === 0) && styles.modalConfirmButtonDisabled,
+                    pressed && !providerEditSaving && providerEditDays.length > 0 && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveProviderName}
+                  disabled={providerEditSaving || providerDeleteSaving}
+                >
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {providerEditSaving ? 'Guardando...' : 'Guardar'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
+      </Modal>
 
       {/* Modal crear categoría */}
       <Modal
@@ -502,9 +848,9 @@ export default function ProviderScreen({ route, navigation }) {
           <Animated.View
             style={[styles.modalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
           >
-            <Pressable onPress={() => {}}>
-              <Text style={styles.modalTitle}>Nueva categoría</Text>
-              <Text style={styles.modalSubtitle}>
+            <Pressable onPress={Keyboard.dismiss}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Nueva categoría</Text>
+              <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 La categoría se va a crear aunque no tenga artículos todavía.
               </Text>
               <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -518,6 +864,7 @@ export default function ProviderScreen({ route, navigation }) {
                   returnKeyType="done"
                   onSubmitEditing={handleSaveCreateCat}
                   underlineColorAndroid="transparent"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
                 />
               </KeyboardAvoidingView>
               <View style={styles.modalButtons}>
@@ -526,7 +873,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={() => closeSmallModal(setCreateCatVisible)}
                   disabled={createCatSaving}
                 >
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
@@ -537,8 +884,87 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={handleSaveCreateCat}
                   disabled={createCatSaving}
                 >
-                  <Text style={styles.modalConfirmText}>
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {createCatSaving ? 'Guardando...' : 'Crear'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal editar categoría */}
+      <Modal
+        visible={editCatVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeSmallModal(setEditCatVisible)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => closeSmallModal(setEditCatVisible)}>
+          <Animated.View
+            style={[styles.modalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          >
+            <Pressable onPress={Keyboard.dismiss}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalTitleTextBox}>
+                  <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Editar categoría</Text>
+                  <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    Cambiá el nombre o eliminá la categoría.
+                  </Text>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalTrashButton,
+                    pressed && styles.modalTrashButtonPressed,
+                  ]}
+                  onPress={confirmDeleteCategory}
+                  disabled={editCatSaving || deleteCatSaving}
+                  hitSlop={8}
+                >
+                  {deleteCatSaving ? (
+                    <ActivityIndicator size={15} color={COLORS.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+                  )}
+                </Pressable>
+              </View>
+
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Nombre de la categoría..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={editCatName}
+                  onChangeText={setEditCatName}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveEditCat}
+                  underlineColorAndroid="transparent"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                />
+              </KeyboardAvoidingView>
+
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [styles.modalCancelButton, pressed && styles.modalCancelButtonPressed]}
+                  onPress={() => closeSmallModal(setEditCatVisible)}
+                  disabled={editCatSaving || deleteCatSaving}
+                >
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalConfirmButton,
+                    editCatSaving && styles.modalConfirmButtonDisabled,
+                    pressed && !editCatSaving && styles.modalConfirmButtonPressed,
+                  ]}
+                  onPress={handleSaveEditCat}
+                  disabled={editCatSaving || deleteCatSaving}
+                >
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {editCatSaving ? 'Guardando...' : 'Guardar'}
                   </Text>
                 </Pressable>
               </View>
@@ -559,10 +985,10 @@ export default function ProviderScreen({ route, navigation }) {
           <Animated.View
             style={[styles.modalCard, styles.moveModalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
           >
-            <Pressable onPress={() => {}}>
-              <Text style={styles.modalTitle}>Mover categoría</Text>
+            <Pressable onPress={Keyboard.dismiss}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Mover categoría</Text>
               {movingCategory && (
-                <Text style={styles.modalSubtitle}>
+                <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   Todos los artículos de "{movingCategory}" se van a mover a la categoría que elijas.
                 </Text>
               )}
@@ -576,7 +1002,7 @@ export default function ProviderScreen({ route, navigation }) {
                       onPress={() => setMoveCatTarget(cat)}
                     >
                       {selected && <View style={styles.catPickerCheck} />}
-                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]}>{cat}</Text>
+                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]} maxFontSizeMultiplier={MAX_FONT_SCALE}>{cat}</Text>
                     </Pressable>
                   );
                 })}
@@ -587,7 +1013,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={() => closeSmallModal(setMoveCatVisible)}
                   disabled={moveCatSaving}
                 >
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
@@ -598,7 +1024,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={handleSaveMoveCat}
                   disabled={moveCatSaving}
                 >
-                  <Text style={styles.modalConfirmText}>{moveCatSaving ? 'Moviendo...' : 'Mover'}</Text>
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>{moveCatSaving ? 'Moviendo...' : 'Mover'}</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -618,10 +1044,10 @@ export default function ProviderScreen({ route, navigation }) {
           <Animated.View
             style={[styles.modalCard, styles.moveModalCard, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
           >
-            <Pressable onPress={() => {}}>
-              <Text style={styles.modalTitle}>Mover artículo</Text>
+            <Pressable onPress={Keyboard.dismiss}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Mover artículo</Text>
               {movingProduct && (
-                <Text style={styles.modalSubtitle}>
+                <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   "{movingProduct.name}" → elegí la categoría destino
                 </Text>
               )}
@@ -635,7 +1061,7 @@ export default function ProviderScreen({ route, navigation }) {
                       onPress={() => setMoveProdTarget(cat)}
                     >
                       {selected && <View style={styles.catPickerCheck} />}
-                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]}>{cat}</Text>
+                      <Text style={[styles.catPickerText, selected && styles.catPickerTextActive]} maxFontSizeMultiplier={MAX_FONT_SCALE}>{cat}</Text>
                     </Pressable>
                   );
                 })}
@@ -646,7 +1072,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={() => closeSmallModal(setMoveProdVisible)}
                   disabled={moveProdSaving}
                 >
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
@@ -657,7 +1083,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={handleSaveMoveProd}
                   disabled={moveProdSaving}
                 >
-                  <Text style={styles.modalConfirmText}>{moveProdSaving ? 'Moviendo...' : 'Mover'}</Text>
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>{moveProdSaving ? 'Moviendo...' : 'Mover'}</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -683,10 +1109,10 @@ export default function ProviderScreen({ route, navigation }) {
               },
             ]}
           >
-            <Pressable onPress={() => {}}>
-              <Text style={styles.modalTitle}>Editar artículo</Text>
+            <Pressable onPress={Keyboard.dismiss}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Editar artículo</Text>
               {editingProduct && (
-                <Text style={styles.modalSubtitle}>
+                <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   Nombre actual: {editingProduct.name}
                 </Text>
               )}
@@ -702,6 +1128,7 @@ export default function ProviderScreen({ route, navigation }) {
                   returnKeyType="done"
                   onSubmitEditing={handleSaveEdit}
                   underlineColorAndroid="transparent"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
                 />
               </KeyboardAvoidingView>
 
@@ -714,7 +1141,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={() => closeEditModal()}
                   disabled={editSaving}
                 >
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                  <Text style={styles.modalCancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
@@ -725,7 +1152,7 @@ export default function ProviderScreen({ route, navigation }) {
                   onPress={handleSaveEdit}
                   disabled={editSaving}
                 >
-                  <Text style={styles.modalConfirmText}>
+                  <Text style={styles.modalConfirmText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {editSaving ? 'Guardando...' : 'Guardar'}
                   </Text>
                 </Pressable>
@@ -755,23 +1182,66 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  headerCardDone: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#16a34a',
+    backgroundColor: '#F0FDF4',
+  },
   headerAccentBar: {
     height: 5,
     backgroundColor: COLORS.accent,
   },
+  headerAccentBarDone: {
+    backgroundColor: '#16a34a',
+  },
   headerContent: {
     padding: 16,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 4,
   },
   title: {
     fontSize: 24,
     fontWeight: '800',
     color: COLORS.textPrimary,
-    marginBottom: 4,
+    flex: 1,
+  },
+  titleDone: {
+    color: '#111827',
+  },
+  doneBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    marginTop: 1,
+  },
+  doneBadgeText: {
+    color: '#166534',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  providerEditButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -2,
+  },
+  providerEditButtonPressed: {
+    backgroundColor: COLORS.borderLight,
   },
   alias: {
     color: COLORS.textSecondary,
     fontSize: 13,
     marginBottom: 10,
+  },
+  aliasDone: {
+    color: '#166534',
   },
   daysRow: {
     flexDirection: 'row',
@@ -790,19 +1260,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
   },
+  dayChipDone: {
+    backgroundColor: '#DCFCE7',
+  },
   dayChipText: {
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.accentDark,
     textTransform: 'capitalize',
   },
+  dayChipTextDone: {
+    color: '#166534',
+  },
   topButtonsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 2,
   },
   outlineButton: {
     flex: 1,
+    minWidth: 118,
     borderWidth: 1.5,
     borderColor: COLORS.accent,
     borderRadius: 12,
@@ -813,11 +1291,22 @@ const styles = StyleSheet.create({
   outlineButtonPressed: {
     backgroundColor: COLORS.accentLight,
   },
+  outlineButtonDone: {
+    borderColor: '#16a34a',
+    backgroundColor: '#F0FDF4',
+  },
+  outlineButtonDonePressed: {
+    backgroundColor: '#DCFCE7',
+  },
   outlineButtonText: {
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
     textAlign: 'center',
+    lineHeight: 17,
+  },
+  outlineButtonTextDone: {
+    color: '#166534',
   },
   sectionLabel: {
     fontSize: 12,
@@ -868,7 +1357,7 @@ const styles = StyleSheet.create({
   },
   categoryHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 14,
   },
   categoryHeaderPressed: {
@@ -887,6 +1376,8 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     textTransform: 'capitalize',
     flex: 1,
+    flexShrink: 1,
+    lineHeight: 20,
   },
   categoryCount: {
     backgroundColor: COLORS.accentLight,
@@ -902,6 +1393,7 @@ const styles = StyleSheet.create({
   },
   chevron: {
     marginLeft: 2,
+    marginTop: 7,
   },
   productList: {
     paddingHorizontal: 14,
@@ -909,7 +1401,7 @@ const styles = StyleSheet.create({
   },
   productRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 7,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
@@ -920,6 +1412,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: COLORS.accent,
     marginRight: 10,
+    marginTop: 8,
     opacity: 0.6,
   },
   productName: {
@@ -931,6 +1424,7 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     gap: 2,
+    marginLeft: 8,
   },
   actionButton: {
     width: 32,
@@ -955,9 +1449,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 2,
+    marginTop: -5,
   },
   catMoveBtnPressed: {
     backgroundColor: COLORS.borderLight,
+  },
+  catEditBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
+    marginTop: -5,
+  },
+  catEditBtnPressed: {
+    backgroundColor: COLORS.accentLight,
   },
   moveModalCard: {
     maxHeight: '75%',
@@ -1019,6 +1526,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   secondaryButton: {
     backgroundColor: COLORS.card,
@@ -1035,6 +1544,8 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   // Modal
   modalOverlay: {
@@ -1046,6 +1557,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
+    maxHeight: '90%',
     backgroundColor: COLORS.card,
     borderRadius: 20,
     padding: 20,
@@ -1054,6 +1566,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 20,
     elevation: 10,
+  },
+  modalScrollContent: {
+    paddingBottom: 24,
   },
   modalTitle: {
     fontSize: 18,
@@ -1066,6 +1581,60 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginBottom: 16,
     lineHeight: 17,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  pickerWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  pickerChip: {
+    backgroundColor: COLORS.cardAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  pickerChipActive: {
+    backgroundColor: COLORS.accentLight,
+    borderColor: COLORS.accent,
+  },
+  pickerChipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 12,
+    textTransform: 'capitalize',
+  },
+  pickerChipTextActive: {
+    color: COLORS.accentDark,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  modalTitleTextBox: {
+    flex: 1,
+  },
+  modalTrashButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTrashButtonPressed: {
+    backgroundColor: '#FECACA',
   },
   modalInput: {
     borderWidth: 1.5,

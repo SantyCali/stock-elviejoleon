@@ -3,14 +3,17 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { getTodayKey } from '../utils/dates';
 
 export async function createOrder(orderData) {
   const docRef = await addDoc(collection(db, 'orders'), {
@@ -90,6 +93,50 @@ export async function hasOrderToday(providerId) {
   } catch {
     return false;
   }
+}
+
+function getManualCompletionId(providerId, dateKey = getTodayKey()) {
+  return `${dateKey}_${encodeURIComponent(providerId)}`;
+}
+
+export async function hasManualOrderCompletionToday(providerId) {
+  try {
+    const completionRef = doc(
+      db,
+      'manualOrderCompletions',
+      getManualCompletionId(providerId)
+    );
+    const snapshot = await getDoc(completionRef);
+    return snapshot.exists();
+  } catch {
+    return false;
+  }
+}
+
+export async function hasOrderDoneToday(providerId) {
+  const [hasRealOrder, hasManualCompletion] = await Promise.all([
+    hasOrderToday(providerId),
+    hasManualOrderCompletionToday(providerId),
+  ]);
+
+  return hasRealOrder || hasManualCompletion;
+}
+
+export async function markOrderDoneToday(provider) {
+  const dateKey = getTodayKey();
+  const completionRef = doc(
+    db,
+    'manualOrderCompletions',
+    getManualCompletionId(provider.id, dateKey)
+  );
+
+  await setDoc(completionRef, {
+    providerId: provider.id,
+    providerName: provider.name,
+    dateKey,
+    markedAt: serverTimestamp(),
+    type: 'manual',
+  });
 }
 
 async function keepOnlyLastFiveOrdersByProvider(providerId) {
