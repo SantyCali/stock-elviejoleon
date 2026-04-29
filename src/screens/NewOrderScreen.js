@@ -220,7 +220,9 @@ export default function NewOrderScreen({ route, navigation }) {
           data={groupedProducts}
           keyExtractor={(item) => item.category}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          renderItem={({ item, index: categoryIndex }) => (
             <View style={styles.categoryCard}>
               <View style={styles.categoryHeader}>
                 <View style={styles.categoryDot} />
@@ -228,7 +230,15 @@ export default function NewOrderScreen({ route, navigation }) {
               </View>
 
               {item.items.map((product, productIndex) => (
-                <View key={product.id} style={styles.productCard}>
+                <View
+                  key={product.id}
+                  style={[
+                    styles.productCard,
+                    categoryIndex === groupedProducts.length - 1 &&
+                      productIndex === item.items.length - 1 &&
+                      { marginBottom: insets.bottom + 220 },
+                  ]}
+                >
                   <Text style={styles.productName}>{product.name}</Text>
 
                   <View style={styles.infoRow}>

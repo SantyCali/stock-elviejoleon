@@ -5,7 +5,9 @@ import {
   Animated,
   FlatList,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,10 +39,12 @@ export default function ProvidersListScreen({ navigation }) {
   const [query, setQuery] = useState('');
   const [createVisible, setCreateVisible] = useState(false);
   const [newProviderName, setNewProviderName] = useState('');
+  const [newProviderAlias, setNewProviderAlias] = useState('');
   const [newProviderDays, setNewProviderDays] = useState([]);
   const [newProviderFrequency, setNewProviderFrequency] = useState('semanal');
   const [creating, setCreating] = useState(false);
   const [doneToday, setDoneToday] = useState(new Set());
+  const aliasInputRef = useRef(null);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -88,6 +92,7 @@ export default function ProvidersListScreen({ navigation }) {
 
   function openCreateProvider() {
     setNewProviderName('');
+    setNewProviderAlias('');
     setNewProviderDays([]);
     setNewProviderFrequency('semanal');
     setCreateVisible(true);
@@ -134,6 +139,7 @@ export default function ProvidersListScreen({ navigation }) {
       setCreating(true);
       const provider = await createProvider({
         name: trimmed,
+        alias: newProviderAlias,
         days: newProviderDays,
         frequency: newProviderFrequency,
       });
@@ -294,18 +300,34 @@ export default function ProvidersListScreen({ navigation }) {
                   Creá el proveedor y después cargale categorías y artículos.
                 </Text>
 
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Nombre del proveedor..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={newProviderName}
-                  onChangeText={setNewProviderName}
-                  autoFocus
-                  returnKeyType="done"
-                  onSubmitEditing={handleCreateProvider}
-                  underlineColorAndroid="transparent"
-                  maxFontSizeMultiplier={MAX_FONT_SCALE}
-                />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Nombre del proveedor..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={newProviderName}
+                    onChangeText={setNewProviderName}
+                    autoFocus
+                    returnKeyType="next"
+                    onSubmitEditing={() => aliasInputRef.current?.focus()}
+                    blurOnSubmit={false}
+                    underlineColorAndroid="transparent"
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  />
+
+                  <TextInput
+                    ref={aliasInputRef}
+                    style={styles.modalInput}
+                    placeholder="Apodo o tambien conocido como..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={newProviderAlias}
+                    onChangeText={setNewProviderAlias}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    underlineColorAndroid="transparent"
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  />
+                </KeyboardAvoidingView>
 
                 <Text style={styles.modalLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>Días de pedido</Text>
                 <View style={styles.pickerWrap}>

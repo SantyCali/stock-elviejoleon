@@ -24,6 +24,23 @@ function slugify(text) {
     .replace(/-+/g, '-');
 }
 
+function cleanAliasList(alias) {
+  const rawAliases = Array.isArray(alias)
+    ? alias
+    : String(alias || '')
+        .split(',')
+        .map((item) => item.trim());
+
+  const seen = new Set();
+  return rawAliases.filter((item) => {
+    const clean = String(item).trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function getProviders() {
   const querySnapshot = await getDocs(collection(db, 'providers'));
 
@@ -33,10 +50,11 @@ export async function getProviders() {
   }));
 }
 
-export async function createProvider({ name, days = [], frequency = 'semanal' }) {
+export async function createProvider({ name, days = [], frequency = 'semanal', alias = [] }) {
   const cleanName = String(name).trim();
   const cleanDays = Array.isArray(days) ? days.filter(Boolean) : [];
   const cleanFrequency = String(frequency || 'semanal').trim() || 'semanal';
+  const cleanAlias = cleanAliasList(alias);
 
   if (!cleanName) throw new Error('MISSING_PROVIDER_NAME');
 
@@ -52,7 +70,7 @@ export async function createProvider({ name, days = [], frequency = 'semanal' })
     name: cleanName,
     days: cleanDays,
     frequency: cleanFrequency,
-    alias: [],
+    alias: cleanAlias,
     categories: [],
     isJoke: false,
   };
@@ -75,10 +93,11 @@ export async function updateProviderName(providerId, name) {
   return cleanName;
 }
 
-export async function updateProviderDetails(providerId, { name, days = [], frequency = 'semanal' }) {
+export async function updateProviderDetails(providerId, { name, days = [], frequency = 'semanal', alias = [] }) {
   const cleanName = String(name).trim();
   const cleanDays = Array.isArray(days) ? days.filter(Boolean) : [];
   const cleanFrequency = String(frequency || 'semanal').trim() || 'semanal';
+  const cleanAlias = cleanAliasList(alias);
 
   if (!providerId) throw new Error('MISSING_PROVIDER_ID');
   if (!cleanName) throw new Error('MISSING_PROVIDER_NAME');
@@ -88,12 +107,14 @@ export async function updateProviderDetails(providerId, { name, days = [], frequ
     name: cleanName,
     days: cleanDays,
     frequency: cleanFrequency,
+    alias: cleanAlias,
   });
 
   return {
     name: cleanName,
     days: cleanDays,
     frequency: cleanFrequency,
+    alias: cleanAlias,
   };
 }
 

@@ -51,10 +51,12 @@ export default function ProviderScreen({ route, navigation }) {
   // Provider name modal state
   const [providerEditVisible, setProviderEditVisible] = useState(false);
   const [providerEditName, setProviderEditName] = useState(provider.name || '');
+  const [providerEditAlias, setProviderEditAlias] = useState((provider.alias || []).join(', '));
   const [providerEditDays, setProviderEditDays] = useState(provider.days || []);
   const [providerEditFrequency, setProviderEditFrequency] = useState(provider.frequency || 'semanal');
   const [providerEditSaving, setProviderEditSaving] = useState(false);
   const [providerDeleteSaving, setProviderDeleteSaving] = useState(false);
+  const providerAliasInputRef = useRef(null);
 
   // Standalone categories
   const [standaloneCategories, setStandaloneCategories] = useState([]);
@@ -217,6 +219,7 @@ export default function ProviderScreen({ route, navigation }) {
 
   function openProviderEditModal() {
     setProviderEditName(currentProvider.name || '');
+    setProviderEditAlias((currentProvider.alias || []).join(', '));
     setProviderEditDays(currentProvider.days || []);
     setProviderEditFrequency(currentProvider.frequency || 'semanal');
     openSmallModal(setProviderEditVisible, () => {});
@@ -243,6 +246,7 @@ export default function ProviderScreen({ route, navigation }) {
       setProviderEditSaving(true);
       const saved = await updateProviderDetails(currentProvider.id, {
         name: trimmed,
+        alias: providerEditAlias,
         days: providerEditDays,
         frequency: providerEditFrequency,
       });
@@ -601,38 +605,54 @@ export default function ProviderScreen({ route, navigation }) {
           renderItem={({ item }) => {
             const expanded = expandedCategories.has(item.category);
             return (
-              <View style={styles.categoryCard}>
+              <View style={[styles.categoryCard, orderDoneToday && styles.categoryCardDone]}>
                 {/* Header tocable */}
                 <Pressable
                   style={({ pressed }) => [
                     styles.categoryHeader,
-                    pressed && styles.categoryHeaderPressed,
+                    pressed && (orderDoneToday ? styles.categoryHeaderDonePressed : styles.categoryHeaderPressed),
                   ]}
                   onPress={() => toggleCategory(item.category)}
                 >
-                  <View style={styles.categoryDot} />
-                  <Text style={styles.categoryTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>{item.category}</Text>
-                  <View style={styles.categoryCount}>
-                    <Text style={styles.categoryCountText} maxFontSizeMultiplier={MAX_FONT_SCALE}>{item.items.length}</Text>
+                  <View style={[styles.categoryDot, orderDoneToday && styles.categoryDotDone]} />
+                  <Text
+                    style={[styles.categoryTitle, orderDoneToday && styles.categoryTitleDone]}
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  >
+                    {item.category}
+                  </Text>
+                  <View style={[styles.categoryCount, orderDoneToday && styles.categoryCountDone]}>
+                    <Text
+                      style={[styles.categoryCountText, orderDoneToday && styles.categoryCountTextDone]}
+                      maxFontSizeMultiplier={MAX_FONT_SCALE}
+                    >
+                      {item.items.length}
+                    </Text>
                   </View>
                   <Pressable
-                    style={({ pressed }) => [styles.catMoveBtn, pressed && styles.catMoveBtnPressed]}
+                    style={({ pressed }) => [
+                      styles.catMoveBtn,
+                      pressed && (orderDoneToday ? styles.doneIconButtonPressed : styles.catMoveBtnPressed),
+                    ]}
                     onPress={() => openMoveCat(item.category)}
                     hitSlop={6}
                   >
-                    <Ionicons name="arrow-redo-outline" size={16} color={COLORS.textSecondary} />
+                    <Ionicons name="arrow-redo-outline" size={16} color={orderDoneToday ? '#16a34a' : COLORS.textSecondary} />
                   </Pressable>
                   <Pressable
-                    style={({ pressed }) => [styles.catEditBtn, pressed && styles.catEditBtnPressed]}
+                    style={({ pressed }) => [
+                      styles.catEditBtn,
+                      pressed && (orderDoneToday ? styles.doneIconButtonPressed : styles.catEditBtnPressed),
+                    ]}
                     onPress={() => openEditCat(item.category)}
                     hitSlop={6}
                   >
-                    <Ionicons name="pencil" size={15} color={COLORS.accent} />
+                    <Ionicons name="pencil" size={15} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
                   </Pressable>
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={16}
-                    color={COLORS.textSecondary}
+                    color={orderDoneToday ? '#16a34a' : COLORS.textSecondary}
                     style={styles.chevron}
                   />
                 </Pressable>
@@ -642,32 +662,37 @@ export default function ProviderScreen({ route, navigation }) {
                   <View style={styles.productList}>
                     {item.items.map((product) => (
                       <View key={product.id} style={styles.productRow}>
-                        <View style={styles.productBullet} />
-                        <Text style={styles.productName} maxFontSizeMultiplier={MAX_FONT_SCALE}>{product.name}</Text>
+                        <View style={[styles.productBullet, orderDoneToday && styles.productBulletDone]} />
+                        <Text
+                          style={[styles.productName, orderDoneToday && styles.productNameDone]}
+                          maxFontSizeMultiplier={MAX_FONT_SCALE}
+                        >
+                          {product.name}
+                        </Text>
 
                         <View style={styles.actionButtons}>
                           {/* Editar */}
                           <Pressable
                             style={({ pressed }) => [
                               styles.actionButton,
-                              pressed && styles.editButtonPressed,
+                              pressed && (orderDoneToday ? styles.doneIconButtonPressed : styles.editButtonPressed),
                             ]}
                             onPress={() => openEditModal(product)}
                             disabled={deletingId === product.id}
                           >
-                            <Ionicons name="create-outline" size={17} color={COLORS.accent} />
+                            <Ionicons name="create-outline" size={17} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
                           </Pressable>
 
                           {/* Mover a otra categoría */}
                           <Pressable
                             style={({ pressed }) => [
                               styles.actionButton,
-                              pressed && styles.moveButtonPressed,
+                              pressed && (orderDoneToday ? styles.doneIconButtonPressed : styles.moveButtonPressed),
                             ]}
                             onPress={() => openMoveProd(product)}
                             disabled={deletingId === product.id}
                           >
-                            <Ionicons name="arrow-redo-outline" size={17} color={COLORS.textSecondary} />
+                            <Ionicons name="arrow-redo-outline" size={17} color={orderDoneToday ? '#16a34a' : COLORS.textSecondary} />
                           </Pressable>
 
                           {/* Eliminar */}
@@ -699,7 +724,11 @@ export default function ProviderScreen({ route, navigation }) {
       {/* Bottom actions */}
       <View style={[styles.buttonsContainer, { paddingBottom: insets.bottom }]}>
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          style={({ pressed }) => [
+            styles.button,
+            orderDoneToday && styles.buttonDone,
+            pressed && (orderDoneToday ? styles.buttonDonePressed : styles.buttonPressed),
+          ]}
           onPress={() => navigation.navigate('Stock', { provider: currentProvider })}
         >
           <Text style={styles.buttonText} maxFontSizeMultiplier={MAX_FONT_SCALE}>📊  Cargar stock</Text>
@@ -707,10 +736,19 @@ export default function ProviderScreen({ route, navigation }) {
 
         {userRole === 'jefe' && (
           <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              orderDoneToday && styles.secondaryButtonDone,
+              pressed && (orderDoneToday ? styles.secondaryButtonDonePressed : styles.secondaryButtonPressed),
+            ]}
             onPress={() => navigation.navigate('NewOrder', { provider: currentProvider })}
           >
-            <Text style={styles.secondaryButtonText} maxFontSizeMultiplier={MAX_FONT_SCALE}>🛒  Hacer pedido</Text>
+            <Text
+              style={[styles.secondaryButtonText, orderDoneToday && styles.secondaryButtonTextDone]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+            >
+              🛒  Hacer pedido
+            </Text>
           </Pressable>
         )}
       </View>
@@ -737,7 +775,7 @@ export default function ProviderScreen({ route, navigation }) {
                 <View style={styles.modalTitleTextBox}>
                   <Text style={styles.modalTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>Editar proveedor</Text>
               <Text style={styles.modalSubtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                Cambiá el nombre del proveedor en Firebase.
+                Cambiá el nombre y el apodo del proveedor en Firebase.
                   </Text>
                 </View>
                 <Pressable
@@ -765,8 +803,22 @@ export default function ProviderScreen({ route, navigation }) {
                   value={providerEditName}
                   onChangeText={setProviderEditName}
                   autoFocus
+                  returnKeyType="next"
+                  onSubmitEditing={() => providerAliasInputRef.current?.focus()}
+                  blurOnSubmit={false}
+                  underlineColorAndroid="transparent"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                />
+
+                <TextInput
+                  ref={providerAliasInputRef}
+                  style={styles.modalInput}
+                  placeholder="Apodo o tambien conocido como..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={providerEditAlias}
+                  onChangeText={setProviderEditAlias}
                   returnKeyType="done"
-                  onSubmitEditing={handleSaveProviderName}
+                  onSubmitEditing={Keyboard.dismiss}
                   underlineColorAndroid="transparent"
                   maxFontSizeMultiplier={MAX_FONT_SCALE}
                 />
@@ -1355,6 +1407,11 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
+  categoryCardDone: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1363,12 +1420,18 @@ const styles = StyleSheet.create({
   categoryHeaderPressed: {
     backgroundColor: COLORS.cardAlt,
   },
+  categoryHeaderDonePressed: {
+    backgroundColor: '#DCFCE7',
+  },
   categoryDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: COLORS.accent,
     marginRight: 8,
+  },
+  categoryDotDone: {
+    backgroundColor: '#16a34a',
   },
   categoryTitle: {
     fontSize: 15,
@@ -1379,6 +1442,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     lineHeight: 20,
   },
+  categoryTitleDone: {
+    color: '#14532d',
+  },
   categoryCount: {
     backgroundColor: COLORS.accentLight,
     borderRadius: 12,
@@ -1386,10 +1452,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     marginRight: 6,
   },
+  categoryCountDone: {
+    backgroundColor: '#BBF7D0',
+  },
   categoryCountText: {
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.accentDark,
+  },
+  categoryCountTextDone: {
+    color: '#166534',
   },
   chevron: {
     marginLeft: 2,
@@ -1415,11 +1487,18 @@ const styles = StyleSheet.create({
     marginTop: 8,
     opacity: 0.6,
   },
+  productBulletDone: {
+    backgroundColor: '#16a34a',
+    opacity: 1,
+  },
   productName: {
     flex: 1,
     color: COLORS.textSecondary,
     fontSize: 14,
     lineHeight: 20,
+  },
+  productNameDone: {
+    color: '#166534',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -1438,6 +1517,9 @@ const styles = StyleSheet.create({
   },
   moveButtonPressed: {
     backgroundColor: COLORS.borderLight,
+  },
+  doneIconButtonPressed: {
+    backgroundColor: '#DCFCE7',
   },
   deleteButtonPressed: {
     backgroundColor: '#FEE2E2',
@@ -1522,6 +1604,13 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: COLORS.accentDark,
   },
+  buttonDone: {
+    backgroundColor: '#16a34a',
+    shadowColor: '#166534',
+  },
+  buttonDonePressed: {
+    backgroundColor: '#15803d',
+  },
   buttonText: {
     color: '#fff',
     fontWeight: '700',
@@ -1540,12 +1629,22 @@ const styles = StyleSheet.create({
   secondaryButtonPressed: {
     backgroundColor: COLORS.accentLight,
   },
+  secondaryButtonDone: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#16a34a',
+  },
+  secondaryButtonDonePressed: {
+    backgroundColor: '#DCFCE7',
+  },
   secondaryButtonText: {
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  secondaryButtonTextDone: {
+    color: '#166534',
   },
   // Modal
   modalOverlay: {

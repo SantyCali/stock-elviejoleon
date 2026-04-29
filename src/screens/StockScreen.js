@@ -479,7 +479,8 @@ export default function StockScreen({ route, navigation }) {
           keyExtractor={(item) => item.category}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
+          keyboardDismissMode="interactive"
+          renderItem={({ item, index: categoryIndex }) => (
             <View style={styles.categoryCard}>
 
               {/* Category header con lápiz */}
@@ -507,7 +508,15 @@ export default function StockScreen({ route, navigation }) {
 
               {/* Productos con lápiz + tacho */}
               {item.items.map((product, productIndex) => (
-                <View key={product.id} style={styles.productCard}>
+                <View
+                  key={product.id}
+                  style={[
+                    styles.productCard,
+                    categoryIndex === groupedProducts.length - 1 &&
+                      productIndex === item.items.length - 1 &&
+                      { marginBottom: insets.bottom + 220 },
+                  ]}
+                >
 
                   {/* Fila nombre + botones */}
                   <View style={styles.productTopRow}>
