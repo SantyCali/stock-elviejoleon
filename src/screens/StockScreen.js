@@ -27,6 +27,7 @@ import {
 } from '../services/productAdminService';
 import { createStockSnapshot } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
+import { notifyStockLoaded } from '../services/activityNotificationService';
 import { COLORS } from '../theme';
 
 // Persiste los valores HAY durante la sesión de la app, sobrevive a la navegación.
@@ -155,6 +156,11 @@ export default function StockScreen({ route, navigation }) {
         createdByName: profile?.name || null,
         createdByUsername: profile?.username || null,
         items: itemsToSave,
+      });
+
+      notifyStockLoaded({
+        profile,
+        providerName: provider.name,
       });
 
       clearCache(provider.id);

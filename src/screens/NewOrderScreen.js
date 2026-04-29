@@ -14,6 +14,7 @@ import { getProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
 import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
+import { notifyOrderFinished } from '../services/activityNotificationService';
 import { COLORS } from '../theme';
 
 const pedirCache = {};
@@ -129,6 +130,11 @@ export default function NewOrderScreen({ route, navigation }) {
         createdByName: profile?.name || null,
         createdByUsername: profile?.username || null,
         items: itemsToSave,
+      });
+
+      notifyOrderFinished({
+        profile,
+        providerName: provider.name,
       });
 
       const orderToShare = {
