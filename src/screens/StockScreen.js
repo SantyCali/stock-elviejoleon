@@ -15,14 +15,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getProductsByProvider } from '../services/productService';
+import { subscribeProductsByProvider } from '../services/productService';
 import {
   createProduct,
   createStandaloneCategory,
   deleteProduct,
-  getStandaloneCategories,
   moveProductToCategory,
   renameCategory,
+  subscribeStandaloneCategories,
   updateProductName,
 } from '../services/productAdminService';
 import { createStockSnapshot } from '../services/stockService';
@@ -101,24 +101,49 @@ export default function StockScreen({ route, navigation }) {
   const smallOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    loadProducts();
-  }, [provider.id]);
+    setLoading(true);
+    let productsReady = false;
+    let categoriesReady = false;
+    let cancelled = false;
 
-  async function loadProducts() {
-    try {
-      setLoading(true);
-      const [data, extra] = await Promise.all([
-        getProductsByProvider(provider.id),
-        getStandaloneCategories(provider.id),
-      ]);
-      setProducts(data.map((item) => ({ ...item, hay: getCached(provider.id, item.id) })));
-      setStandaloneCategories(extra);
-    } catch (error) {
-      console.log('Error cargando productos para stock:', error);
-    } finally {
-      setLoading(false);
+    function finishInitialLoad() {
+      if (!cancelled && productsReady && categoriesReady) {
+        setLoading(false);
+      }
     }
-  }
+
+    const unsubscribeProducts = subscribeProductsByProvider(
+      provider.id,
+      (data) => {
+        productsReady = true;
+        setProducts(data.map((item) => ({ ...item, hay: getCached(provider.id, item.id) })));
+        finishInitialLoad();
+      },
+      () => {
+        productsReady = true;
+        finishInitialLoad();
+      }
+    );
+
+    const unsubscribeCategories = subscribeStandaloneCategories(
+      provider.id,
+      (data) => {
+        categoriesReady = true;
+        setStandaloneCategories(data);
+        finishInitialLoad();
+      },
+      () => {
+        categoriesReady = true;
+        finishInitialLoad();
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribeProducts();
+      unsubscribeCategories();
+    };
+  }, [provider.id]);
 
   function updateHay(productId, value) {
     setCached(provider.id, productId, value);
@@ -519,8 +544,8 @@ export default function StockScreen({ route, navigation }) {
                   style={[
                     styles.productCard,
                     categoryIndex === groupedProducts.length - 1 &&
-                      productIndex === item.items.length - 1 &&
-                      { marginBottom: insets.bottom + 220 },
+                    productIndex === item.items.length - 1 &&
+                    { marginBottom: insets.bottom + 220 },
                   ]}
                 >
 
@@ -743,10 +768,10 @@ export default function StockScreen({ route, navigation }) {
                   {addProductSaving
                     ? 'Guardando...'
                     : newNames.filter((n) => n.trim()).length === 0
-                    ? '✅  Guardar categoría'
-                    : newNames.filter((n) => n.trim()).length > 1
-                    ? `✅  Guardar ${newNames.filter((n) => n.trim()).length} artículos`
-                    : '✅  Guardar artículo'}
+                      ? '✅  Guardar categoría'
+                      : newNames.filter((n) => n.trim()).length > 1
+                        ? `✅  Guardar ${newNames.filter((n) => n.trim()).length} artículos`
+                        : '✅  Guardar artículo'}
                 </Text>
               </Pressable>
               <View style={{ height: Platform.OS === 'ios' ? 20 : 8 }} />
@@ -773,7 +798,7 @@ export default function StockScreen({ route, navigation }) {
               { opacity: smallOpacity, transform: [{ scale: smallScale }] },
             ]}
           >
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => { }}>
               <Text style={styles.smallModalTitle}>Editar categoría</Text>
               {editingCategory && (
                 <Text style={styles.smallModalSubtitle}>
@@ -836,7 +861,7 @@ export default function StockScreen({ route, navigation }) {
               { opacity: smallOpacity, transform: [{ scale: smallScale }] },
             ]}
           >
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => { }}>
               <Text style={styles.smallModalTitle}>Mover categoría</Text>
               {movingCategory && (
                 <Text style={styles.smallModalSubtitle}>
@@ -908,7 +933,7 @@ export default function StockScreen({ route, navigation }) {
               { opacity: smallOpacity, transform: [{ scale: smallScale }] },
             ]}
           >
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => { }}>
               <Text style={styles.smallModalTitle}>Mover artículo</Text>
               {movingProduct && (
                 <Text style={styles.smallModalSubtitle}>
@@ -979,7 +1004,7 @@ export default function StockScreen({ route, navigation }) {
               { opacity: smallOpacity, transform: [{ scale: smallScale }] },
             ]}
           >
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => { }}>
               <Text style={styles.smallModalTitle}>Editar artículo</Text>
               {editingProduct && (
                 <Text style={styles.smallModalSubtitle}>
@@ -1101,9 +1126,9 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 70,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1113,27 +1138,36 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   categoryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: COLORS.accent,
-    marginRight: 8,
+    marginRight: 10,
   },
   categoryTitle: {
-    fontSize: 15,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EDE9FE',
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    fontSize: 14,
     fontWeight: '800',
-    color: COLORS.textPrimary,
+    color: '#6D28D9',
     textTransform: 'capitalize',
-    flex: 1,
+    maxWidth: '72%',
+    overflow: 'hidden',
   },
   categoryCount: {
     backgroundColor: COLORS.accentLight,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 2,
+    marginLeft: 'auto',
     marginRight: 4,
   },
   categoryCountText: {
@@ -1154,8 +1188,8 @@ const styles = StyleSheet.create({
   productCard: {
     backgroundColor: COLORS.cardAlt,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    padding: 14,
+    marginBottom: 12,
   },
   productTopRow: {
     flexDirection: 'row',

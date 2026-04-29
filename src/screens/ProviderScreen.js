@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,11 +15,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getProductsByProvider } from '../services/productService';
-import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, getStandaloneCategories, moveProductToCategory, renameCategory, updateProductName } from '../services/productAdminService';
+import { subscribeProductsByProvider } from '../services/productService';
+import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, moveProductToCategory, renameCategory, subscribeStandaloneCategories, updateProductName } from '../services/productAdminService';
 import { deleteProviderById, updateProviderDetails } from '../services/providerService';
 import { hasOrderDoneToday } from '../services/orderService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
@@ -85,32 +84,64 @@ export default function ProviderScreen({ route, navigation }) {
   const [moveProdTarget, setMoveProdTarget] = useState('');
   const [moveProdSaving, setMoveProdSaving] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [currentProvider.id])
-  );
+  useEffect(() => {
+    setLoading(true);
+    let productsReady = false;
+    let categoriesReady = false;
+    let cancelled = false;
 
-  async function loadData() {
-    try {
-      setLoading(true);
-      const currentUser = getCurrentUser();
-      const [data, extra, profile, doneToday] = await Promise.all([
-        getProductsByProvider(currentProvider.id),
-        getStandaloneCategories(currentProvider.id),
-        currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
-        hasOrderDoneToday(currentProvider.id),
-      ]);
-      setProducts(data);
-      setStandaloneCategories(extra);
-      setUserRole(profile?.role || null);
-      setOrderDoneToday(doneToday);
-    } catch (error) {
-      console.log('Error cargando proveedor:', error);
-    } finally {
-      setLoading(false);
+    function finishInitialLoad() {
+      if (!cancelled && productsReady && categoriesReady) {
+        setLoading(false);
+      }
     }
-  }
+
+    const unsubscribeProducts = subscribeProductsByProvider(
+      currentProvider.id,
+      (data) => {
+        productsReady = true;
+        setProducts(data);
+        finishInitialLoad();
+      },
+      () => {
+        productsReady = true;
+        finishInitialLoad();
+      }
+    );
+
+    const unsubscribeCategories = subscribeStandaloneCategories(
+      currentProvider.id,
+      (data) => {
+        categoriesReady = true;
+        setStandaloneCategories(data);
+        finishInitialLoad();
+      },
+      () => {
+        categoriesReady = true;
+        finishInitialLoad();
+      }
+    );
+
+    const currentUser = getCurrentUser();
+    Promise.all([
+      currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
+      hasOrderDoneToday(currentProvider.id),
+    ])
+      .then(([profile, doneToday]) => {
+        if (cancelled) return;
+        setUserRole(profile?.role || null);
+        setOrderDoneToday(doneToday);
+      })
+      .catch((error) => {
+        console.log('Error cargando datos del proveedor:', error);
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribeProducts();
+      unsubscribeCategories();
+    };
+  }, [currentProvider.id]);
 
   function toggleCategory(category) {
     setExpandedCategories(prev => {

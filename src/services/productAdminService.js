@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   query,
   setDoc,
   updateDoc,
@@ -110,6 +111,29 @@ export async function getStandaloneCategories(providerId) {
   } catch {
     return [];
   }
+}
+
+export function subscribeStandaloneCategories(providerId, onData, onError) {
+  if (!providerId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'providerCategories'),
+    where('providerId', '==', providerId)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      onData(snapshot.docs.map((d) => d.data().name).filter(Boolean));
+    },
+    (error) => {
+      console.log('Error escuchando categorias del proveedor:', error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 export async function createStandaloneCategory(providerId, name) {

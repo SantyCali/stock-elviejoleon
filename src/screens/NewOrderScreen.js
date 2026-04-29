@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getProductsByProvider } from '../services/productService';
+import { subscribeProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
 import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
@@ -30,37 +30,19 @@ export default function NewOrderScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [stockLoadedBy, setStockLoadedBy] = useState(null);
+  const stockMapRef = useRef({});
+  const lastOrderMapRef = useRef({});
 
   useEffect(() => {
-    loadOrderData();
-  }, [provider.id]);
+    setLoading(true);
+    let productsReady = false;
+    let orderDataReady = false;
+    let cancelled = false;
+    let latestProducts = [];
 
-  async function loadOrderData() {
-    try {
-      setLoading(true);
-
-      const providerProducts = await getProductsByProvider(provider.id);
-      const latestStock = await getLatestStockByProvider(provider.id);
-      const lastOrder = await getLastOrderByProvider(provider.id);
-
-      const stockMap = {};
-      const lastOrderMap = {};
-
-      if (latestStock?.items?.length) {
-        latestStock.items.forEach((item) => {
-          stockMap[item.productId] = item.hay;
-        });
-      }
-
-      if (lastOrder?.items?.length) {
-        lastOrder.items.forEach((item) => {
-          lastOrderMap[item.productId] = item.pedir;
-        });
-      }
-
-      setStockLoadedBy(
-        latestStock?.createdByName || latestStock?.createdByUsername || null
-      );
+    function mergeProducts(providerProducts) {
+      const stockMap = stockMapRef.current;
+      const lastOrderMap = lastOrderMapRef.current;
 
       setProducts(
         providerProducts.map((item) => ({
@@ -70,12 +52,74 @@ export default function NewOrderScreen({ route, navigation }) {
           pedirAhora: getCachedPedir(provider.id, item.id),
         }))
       );
-    } catch (error) {
-      console.log('Error cargando datos de pedido:', error);
-    } finally {
-      setLoading(false);
     }
-  }
+
+    function finishInitialLoad() {
+      if (!cancelled && productsReady && orderDataReady) {
+        setLoading(false);
+      }
+    }
+
+    const unsubscribeProducts = subscribeProductsByProvider(
+      provider.id,
+      (data) => {
+        productsReady = true;
+        latestProducts = data;
+        if (orderDataReady) mergeProducts(data);
+        finishInitialLoad();
+      },
+      () => {
+        productsReady = true;
+        finishInitialLoad();
+      }
+    );
+
+    Promise.all([
+      getLatestStockByProvider(provider.id),
+      getLastOrderByProvider(provider.id),
+    ])
+      .then(([latestStock, lastOrder]) => {
+        if (cancelled) return;
+
+        const stockMap = {};
+        const lastOrderMap = {};
+
+        if (latestStock?.items?.length) {
+          latestStock.items.forEach((item) => {
+            stockMap[item.productId] = item.hay;
+          });
+        }
+
+        if (lastOrder?.items?.length) {
+          lastOrder.items.forEach((item) => {
+            lastOrderMap[item.productId] = item.pedir;
+          });
+        }
+
+        stockMapRef.current = stockMap;
+        lastOrderMapRef.current = lastOrderMap;
+        orderDataReady = true;
+
+        setStockLoadedBy(
+          latestStock?.createdByName || latestStock?.createdByUsername || null
+        );
+
+        mergeProducts(latestProducts);
+        finishInitialLoad();
+      })
+      .catch((error) => {
+        console.log('Error cargando datos de pedido:', error);
+        if (cancelled) return;
+        orderDataReady = true;
+        mergeProducts(latestProducts);
+        finishInitialLoad();
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribeProducts();
+    };
+  }, [provider.id]);
 
   function updatePedirAhora(productId, value) {
     setCachedPedir(provider.id, productId, value);
@@ -241,8 +285,8 @@ export default function NewOrderScreen({ route, navigation }) {
                   style={[
                     styles.productCard,
                     categoryIndex === groupedProducts.length - 1 &&
-                      productIndex === item.items.length - 1 &&
-                      { marginBottom: insets.bottom + 220 },
+                    productIndex === item.items.length - 1 &&
+                    { marginBottom: insets.bottom + 220 },
                   ]}
                 >
                   <Text style={styles.productName}>{product.name}</Text>
@@ -376,9 +420,9 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 70,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -388,26 +432,34 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
   },
   categoryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: COLORS.accent,
-    marginRight: 8,
+    marginRight: 10,
   },
   categoryTitle: {
-    fontSize: 15,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EDE9FE',
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    fontSize: 14,
     fontWeight: '800',
-    color: COLORS.textPrimary,
+    color: '#6D28D9',
     textTransform: 'capitalize',
+    overflow: 'hidden',
   },
   productCard: {
     backgroundColor: COLORS.cardAlt,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    padding: 14,
+    marginBottom: 12,
   },
   productName: {
     fontSize: 15,
