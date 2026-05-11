@@ -91,6 +91,9 @@ export default function StockScreen({ route, navigation }) {
   const [movingProduct, setMovingProduct] = useState(null);
   const [moveProdTarget, setMoveProdTarget] = useState('');
   const [moveProdSaving, setMoveProdSaving] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [editPreviewProduct, setEditPreviewProduct] = useState(null);
+  const [editPreviewValue, setEditPreviewValue] = useState('');
 
   // Animation for the big add-product modal
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -215,6 +218,27 @@ export default function StockScreen({ route, navigation }) {
         },
       ]
     );
+  }
+
+  function handlePreview() {
+    const hasItems = products.some((p) => p.hay.trim() !== '');
+    if (!hasItems) {
+      Alert.alert('Ojo', 'Cargá al menos un stock antes de continuar.');
+      return;
+    }
+    setPreviewMode(true);
+  }
+
+  function openPreviewEdit(product) {
+    setEditPreviewValue(product.hay);
+    setEditPreviewProduct(product);
+  }
+
+  function confirmPreviewEdit() {
+    if (editPreviewProduct) {
+      updateHay(editPreviewProduct.id, editPreviewValue);
+    }
+    setEditPreviewProduct(null);
   }
 
   // ─── Add-product modal ────────────────────────────────────────────────────
@@ -467,6 +491,12 @@ export default function StockScreen({ route, navigation }) {
       }));
   }, [products]);
 
+  const previewGroups = useMemo(() =>
+    groupedProducts
+      .map((g) => ({ ...g, items: g.items.filter((p) => p.hay.trim() !== '') }))
+      .filter((g) => g.items.length > 0),
+  [groupedProducts]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -616,20 +646,13 @@ export default function StockScreen({ route, navigation }) {
         />
       )}
 
-      {/* Botón guardar stock */}
+      {/* Botón vista previa */}
       <View style={{ paddingBottom: insets.bottom }}>
         <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            saving && styles.buttonDisabled,
-            pressed && !saving && styles.buttonPressed,
-          ]}
-          onPress={handleSaveStock}
-          disabled={saving}
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          onPress={handlePreview}
         >
-          <Text style={styles.buttonText}>
-            {saving ? 'Guardando...' : '💾  Guardar stock'}
-          </Text>
+          <Text style={styles.buttonText}>Vista previa</Text>
         </Pressable>
       </View>
 
@@ -984,6 +1007,136 @@ export default function StockScreen({ route, navigation }) {
             </Pressable>
           </Animated.View>
         </Pressable>
+      </Modal>
+
+      {/* ── Vista previa ──────────────────────────────────────────────────── */}
+      <Modal
+        visible={previewMode}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewMode(false)}
+      >
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+          <View style={styles.headerArea}>
+            <Pressable
+              onPress={() => setPreviewMode(false)}
+              style={styles.previewBackBtn}
+            >
+              <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
+              <Text style={styles.previewBackText}>Volver</Text>
+            </Pressable>
+            <Text style={styles.title}>Vista previa</Text>
+            <View style={styles.providerChip}>
+              <Text style={styles.providerChipText}>{provider.name}</Text>
+            </View>
+          </View>
+
+          <FlatList
+            data={previewGroups}
+            keyExtractor={(g) => g.category}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            renderItem={({ item: group, index: groupIndex }) => (
+              <View style={styles.categoryCard}>
+                <View style={styles.categoryHeader}>
+                  <View style={styles.categoryDot} />
+                  <Text style={styles.categoryTitle}>{group.category}</Text>
+                  <View style={styles.categoryCount}>
+                    <Text style={styles.categoryCountText}>{group.items.length}</Text>
+                  </View>
+                </View>
+                {group.items.map((product, productIndex) => (
+                  <View
+                    key={product.id}
+                    style={[
+                      styles.previewRow,
+                      groupIndex === previewGroups.length - 1 &&
+                        productIndex === group.items.length - 1 &&
+                        { marginBottom: insets.bottom + 100 },
+                    ]}
+                  >
+                    <Text style={styles.previewName}>{product.name}</Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.previewValueWrap,
+                        pressed && styles.previewValueWrapPressed,
+                      ]}
+                      onPress={() => openPreviewEdit(product)}
+                    >
+                      <Text style={styles.previewInput} numberOfLines={2}>{product.hay}</Text>
+                      <Ionicons name="create-outline" size={14} color={COLORS.accent} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          />
+
+          <View style={{ paddingBottom: insets.bottom }}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                saving && styles.buttonDisabled,
+                pressed && !saving && styles.buttonPressed,
+              ]}
+              onPress={handleSaveStock}
+              disabled={saving}
+            >
+              <Text style={styles.buttonText}>
+                {saving ? 'Guardando...' : '💾  Guardar stock'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* ── Popup editar valor en vista previa ─────────────────────── */}
+          <Modal
+            visible={editPreviewProduct !== null}
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={() => setEditPreviewProduct(null)}
+          >
+            <Pressable
+              style={styles.smallModalOverlay}
+              onPress={() => setEditPreviewProduct(null)}
+            >
+              <View style={styles.smallModalCard}>
+                <Pressable onPress={() => {}}>
+                  <Text style={styles.smallModalTitle}>Editar cantidad</Text>
+                  {editPreviewProduct && (
+                    <Text style={styles.smallModalSubtitle}>{editPreviewProduct.name}</Text>
+                  )}
+                  <TextInput
+                    style={styles.smallModalInput}
+                    value={editPreviewValue}
+                    onChangeText={setEditPreviewValue}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={confirmPreviewEdit}
+                    underlineColorAndroid="transparent"
+                    placeholderTextColor={COLORS.textMuted}
+                    placeholder="Ej: 7 packs"
+                  />
+                  <View style={styles.smallModalButtons}>
+                    <Pressable
+                      style={({ pressed }) => [styles.smallCancelBtn, pressed && styles.smallCancelBtnPressed]}
+                      onPress={() => setEditPreviewProduct(null)}
+                    >
+                      <Text style={styles.smallCancelText}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.smallConfirmBtn, pressed && styles.smallConfirmBtnPressed]}
+                      onPress={confirmPreviewEdit}
+                    >
+                      <Text style={styles.smallConfirmText}>Guardar</Text>
+                    </Pressable>
+                  </View>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Modal>
+        </View>
       </Modal>
 
       {/* ── Modal: editar nombre de artículo ──────────────────────────────── */}
@@ -1585,5 +1738,57 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 14,
+  },
+
+  // ── Vista previa ──────────────────────────────────────────────────────────
+  previewBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginRight: 4,
+  },
+  previewBackText: {
+    color: COLORS.accent,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    gap: 12,
+  },
+  previewName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  previewValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.cardAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minWidth: 80,
+    maxWidth: 150,
+  },
+  previewInput: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+    padding: 0,
+  },
+  previewValueWrapPressed: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentLight,
   },
 });

@@ -139,6 +139,10 @@ export async function markOrderDoneToday(provider) {
   });
 }
 
+export async function deleteOrder(orderId) {
+  await deleteDoc(doc(db, 'orders', orderId));
+}
+
 async function keepOnlyLastFiveOrdersByProvider(providerId) {
   const q = query(
     collection(db, 'orders'),

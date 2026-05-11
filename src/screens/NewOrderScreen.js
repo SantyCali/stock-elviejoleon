@@ -3,12 +3,14 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { subscribeProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
@@ -29,9 +31,21 @@ export default function NewOrderScreen({ route, navigation }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [editPreviewProduct, setEditPreviewProduct] = useState(null);
+  const [editPreviewValue, setEditPreviewValue] = useState('');
+  const [pendingShareOrder, setPendingShareOrder] = useState(null);
   const [stockLoadedBy, setStockLoadedBy] = useState(null);
   const stockMapRef = useRef({});
   const lastOrderMapRef = useRef({});
+
+  useEffect(() => {
+    if (!previewMode && pendingShareOrder) {
+      const order = pendingShareOrder;
+      setPendingShareOrder(null);
+      navigation.navigate('ShareOrder', { order });
+    }
+  }, [previewMode]);
 
   useEffect(() => {
     setLoading(true);
@@ -194,12 +208,8 @@ export default function NewOrderScreen({ route, navigation }) {
       };
 
       clearPedirCache(provider.id);
-      Alert.alert('Pedido guardado', 'El pedido se guardó correctamente.', [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('ShareOrder', { order: orderToShare }),
-        },
-      ]);
+      setPendingShareOrder(orderToShare);
+      setPreviewMode(false);
     } catch (error) {
       console.log('Error guardando pedido:', error);
       Alert.alert('Error', 'No se pudo guardar el pedido.');
@@ -234,6 +244,33 @@ export default function NewOrderScreen({ route, navigation }) {
         items: groups[category].sort((a, b) => a.name.localeCompare(b.name)),
       }));
   }, [products]);
+
+  const previewGroups = useMemo(() =>
+    groupedProducts
+      .map((g) => ({ ...g, items: g.items.filter((p) => p.pedirAhora.trim() !== '') }))
+      .filter((g) => g.items.length > 0),
+  [groupedProducts]);
+
+  function handlePreview() {
+    const hasItems = products.some((p) => p.pedirAhora.trim() !== '');
+    if (!hasItems) {
+      Alert.alert('Ojo', 'Cargá al menos un producto para pedir.');
+      return;
+    }
+    setPreviewMode(true);
+  }
+
+  function openPreviewEdit(product) {
+    setEditPreviewValue(product.pedirAhora);
+    setEditPreviewProduct(product);
+  }
+
+  function confirmPreviewEdit() {
+    if (editPreviewProduct) {
+      updatePedirAhora(editPreviewProduct.id, editPreviewValue);
+    }
+    setEditPreviewProduct(null);
+  }
 
   return (
     <View style={styles.container}>
@@ -328,19 +365,144 @@ export default function NewOrderScreen({ route, navigation }) {
 
       <View style={{ paddingBottom: insets.bottom }}>
         <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            saving && styles.buttonDisabled,
-            pressed && !saving && styles.buttonPressed,
-          ]}
-          onPress={handleSaveOrder}
-          disabled={saving}
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          onPress={handlePreview}
         >
-          <Text style={styles.buttonText}>
-            {saving ? 'Guardando...' : '✅  Guardar pedido'}
-          </Text>
+          <Text style={styles.buttonText}>Vista previa</Text>
         </Pressable>
       </View>
+
+      {/* ── Vista previa ──────────────────────────────────────────────────── */}
+      <Modal
+        visible={previewMode}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewMode(false)}
+      >
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+          <View style={styles.headerArea}>
+            <Pressable
+              onPress={() => setPreviewMode(false)}
+              style={styles.previewBackBtn}
+            >
+              <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
+              <Text style={styles.previewBackText}>Volver</Text>
+            </Pressable>
+            <Text style={styles.title}>Vista previa</Text>
+            <View style={styles.providerChip}>
+              <Text style={styles.providerChipText}>{provider.name}</Text>
+            </View>
+          </View>
+
+          <FlatList
+            data={previewGroups}
+            keyExtractor={(g) => g.category}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            renderItem={({ item: group, index: groupIndex }) => (
+              <View style={styles.categoryCard}>
+                <View style={styles.categoryHeader}>
+                  <View style={styles.categoryDot} />
+                  <Text style={styles.categoryTitle}>{group.category}</Text>
+                </View>
+                {group.items.map((product, productIndex) => (
+                  <View
+                    key={product.id}
+                    style={[
+                      styles.previewRow,
+                      groupIndex === previewGroups.length - 1 &&
+                        productIndex === group.items.length - 1 &&
+                        { marginBottom: insets.bottom + 100 },
+                    ]}
+                  >
+                    <View style={styles.previewLeft}>
+                      <Text style={styles.previewName}>{product.name}</Text>
+                      {product.hay !== null && product.hay !== undefined && (
+                        <Text style={styles.previewHay}>Hay: {product.hay}</Text>
+                      )}
+                    </View>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.previewValueWrap,
+                        pressed && styles.previewValueWrapPressed,
+                      ]}
+                      onPress={() => openPreviewEdit(product)}
+                    >
+                      <Text style={styles.previewInput} numberOfLines={2}>{product.pedirAhora}</Text>
+                      <Ionicons name="create-outline" size={14} color={COLORS.accent} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          />
+
+          <View style={{ paddingBottom: insets.bottom }}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                saving && styles.buttonDisabled,
+                pressed && !saving && styles.buttonPressed,
+              ]}
+              onPress={handleSaveOrder}
+              disabled={saving}
+            >
+              <Text style={styles.buttonText}>
+                {saving ? 'Guardando...' : '✅  Guardar pedido'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* ── Popup editar valor en vista previa ─────────────────────── */}
+          <Modal
+            visible={editPreviewProduct !== null}
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={() => setEditPreviewProduct(null)}
+          >
+            <Pressable
+              style={styles.smallModalOverlay}
+              onPress={() => setEditPreviewProduct(null)}
+            >
+              <View style={styles.smallModalCard}>
+                <Pressable onPress={() => {}}>
+                  <Text style={styles.smallModalTitle}>Editar cantidad</Text>
+                  {editPreviewProduct && (
+                    <Text style={styles.smallModalSubtitle}>{editPreviewProduct.name}</Text>
+                  )}
+                  <TextInput
+                    style={styles.smallModalInput}
+                    value={editPreviewValue}
+                    onChangeText={setEditPreviewValue}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={confirmPreviewEdit}
+                    underlineColorAndroid="transparent"
+                    placeholderTextColor={COLORS.textMuted}
+                    placeholder="Ej: 7 packs"
+                  />
+                  <View style={styles.smallModalButtons}>
+                    <Pressable
+                      style={({ pressed }) => [styles.smallCancelBtn, pressed && styles.smallCancelBtnPressed]}
+                      onPress={() => setEditPreviewProduct(null)}
+                    >
+                      <Text style={styles.smallCancelText}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.smallConfirmBtn, pressed && styles.smallConfirmBtnPressed]}
+                      onPress={confirmPreviewEdit}
+                    >
+                      <Text style={styles.smallConfirmText}>Guardar</Text>
+                    </Pressable>
+                  </View>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Modal>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -529,5 +691,145 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+  },
+
+  // ── Vista previa ──────────────────────────────────────────────────────────
+  previewBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginRight: 4,
+  },
+  previewBackText: {
+    color: COLORS.accent,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    gap: 12,
+  },
+  previewLeft: {
+    flex: 1,
+  },
+  previewName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  previewHay: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  previewValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.cardAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minWidth: 80,
+    maxWidth: 150,
+  },
+  previewInput: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+    padding: 0,
+  },
+  previewValueWrapPressed: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentLight,
+  },
+  smallModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  smallModalCard: {
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  smallModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  smallModalSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 16,
+    lineHeight: 17,
+  },
+  smallModalInput: {
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.cardAlt,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    marginBottom: 16,
+  },
+  smallModalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  smallCancelBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  smallCancelBtnPressed: {
+    backgroundColor: COLORS.cardAlt,
+  },
+  smallCancelText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  smallConfirmBtn: {
+    flex: 1,
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    shadowColor: COLORS.accentDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  smallConfirmBtnPressed: {
+    backgroundColor: COLORS.accentDark,
+  },
+  smallConfirmText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

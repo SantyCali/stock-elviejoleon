@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -8,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getRecentOrders } from '../services/orderService';
+import { deleteOrder, getRecentOrders } from '../services/orderService';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 
@@ -33,6 +34,7 @@ function buildPreview(items = []) {
 export default function OrderHistoryScreen({ navigation }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,6 +51,30 @@ export default function OrderHistoryScreen({ navigation }) {
       console.log('Error cargando historial:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function confirmDelete(order) {
+    Alert.alert(
+      'Borrar pedido',
+      `¿Seguro que querés borrar el pedido de ${order.providerName}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Borrar', style: 'destructive', onPress: () => handleDelete(order.id) },
+      ]
+    );
+  }
+
+  async function handleDelete(orderId) {
+    try {
+      setDeletingId(orderId);
+      await deleteOrder(orderId);
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    } catch (error) {
+      console.log('Error borrando pedido:', error);
+      Alert.alert('Error', 'No se pudo borrar el pedido.');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -98,6 +124,18 @@ export default function OrderHistoryScreen({ navigation }) {
                 <Text style={styles.previewText} numberOfLines={1}>
                   {buildPreview(item.items)}
                 </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
+              onPress={() => confirmDelete(item)}
+              disabled={deletingId === item.id}
+            >
+              {deletingId === item.id ? (
+                <ActivityIndicator size={18} color="#fff" />
+              ) : (
+                <Ionicons name="trash-outline" size={18} color="#fff" />
               )}
             </Pressable>
 
@@ -215,6 +253,18 @@ const styles = StyleSheet.create({
   previewText: {
     fontSize: 13,
     color: COLORS.textMuted,
+  },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  deleteButtonPressed: {
+    backgroundColor: '#b91c1c',
   },
   shareButton: {
     width: 44,
