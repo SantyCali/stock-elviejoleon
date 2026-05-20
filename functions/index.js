@@ -37,6 +37,22 @@ exports.getPushTokenStats = onCall(async (request) => {
   };
 });
 
+exports.sendActivityNotification = onCall(async (request) => {
+  const email = String(request.auth?.token?.email || '').toLowerCase();
+  if (!email) {
+    throw new HttpsError('unauthenticated', 'Tenes que iniciar sesion.');
+  }
+
+  const title = cleanText(request.data?.title, 'El Viejo Leon', 80);
+  const body = cleanText(request.data?.body, '', 300);
+
+  if (!body) {
+    throw new HttpsError('invalid-argument', 'El mensaje no puede estar vacio.');
+  }
+
+  return sendBroadcast(title, body, { type: 'activity' });
+});
+
 exports.notifyProductCreated = onDocumentCreated('products/{productId}', async (event) => {
   const product = event.data?.data();
   if (!product?.name) return null;

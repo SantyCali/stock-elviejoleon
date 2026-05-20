@@ -1,4 +1,4 @@
-import { sendBroadcastNotification } from './pushTokenService';
+import { sendActivityBroadcast } from './pushTokenService';
 
 function getActorName(profile, fallback = 'Alguien') {
   return String(profile?.name || profile?.username || fallback).trim() || fallback;
@@ -6,7 +6,7 @@ function getActorName(profile, fallback = 'Alguien') {
 
 async function notifyActivity(title, body) {
   try {
-    await sendBroadcastNotification(title, body);
+    await sendActivityBroadcast(title, body);
   } catch (error) {
     console.log('No se pudo enviar la notificacion:', error);
   }

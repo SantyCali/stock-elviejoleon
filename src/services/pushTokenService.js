@@ -92,6 +92,20 @@ export async function sendBroadcastNotification(title, body) {
   }
 }
 
+export async function sendActivityBroadcast(title, body) {
+  try {
+    const sendActivity = httpsCallable(functions, 'sendActivityNotification');
+    const result = await sendActivity({ title, body });
+    const data = result.data || {};
+    return {
+      sent: Number(data.sent || 0),
+      errors: Number(data.errors || 0),
+    };
+  } catch (error) {
+    throw mapFunctionError(error);
+  }
+}
+
 async function getLocalPushTokenStats() {
   try {
     const snapshot = await getDocs(collection(db, 'users'));
