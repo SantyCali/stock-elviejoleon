@@ -25,6 +25,7 @@ import {
   subscribeStandaloneCategories,
   updateProductName,
 } from '../services/productAdminService';
+import Toast from 'react-native-toast-message';
 import { createStockSnapshot } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { notifyStockLoaded } from '../services/activityNotificationService';
@@ -192,7 +193,12 @@ export default function StockScreen({ route, navigation }) {
       });
 
       clearCache(provider.id);
-      Alert.alert('Listo', 'El stock se guardó correctamente.');
+      Toast.show({
+        type: 'success',
+        text1: 'Stock guardado',
+        text2: `El stock de ${provider.name} se guardó correctamente.`,
+        visibilityTime: 3000,
+      });
       navigation.goBack();
     } catch (error) {
       console.log('Error guardando stock:', error);

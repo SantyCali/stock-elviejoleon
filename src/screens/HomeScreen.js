@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getProviders } from '../services/providerService';
 import { hasOrderDoneToday, markOrderDoneToday } from '../services/orderService';
+import { hasStockLoadedToday } from '../services/stockService';
 import {
   cancelAllReminders,
   requestNotificationPermissions,
@@ -36,6 +37,7 @@ function normalizeDayName(day) {
 export default function HomeScreen({ navigation }) {
   const [providers, setProviders] = useState([]);
   const [todayStatus, setTodayStatus] = useState([]); // [{ provider, done }]
+  const [stockLoadedStatus, setStockLoadedStatus] = useState({}); // { [providerId]: boolean }
   const [loading, setLoading] = useState(true);
   const [bellVisible, setBellVisible] = useState(false);
 
@@ -76,6 +78,14 @@ export default function HomeScreen({ navigation }) {
 
       setTodayStatus(statusList);
       await updateOrderReminders(statusList);
+
+      const stockMap = {};
+      await Promise.all(
+        providersToday.map(async (provider) => {
+          stockMap[provider.id] = await hasStockLoadedToday(provider.id);
+        })
+      );
+      setStockLoadedStatus(stockMap);
     } catch (error) {
       console.log('Error cargando proveedores:', error);
     } finally {
@@ -233,7 +243,7 @@ export default function HomeScreen({ navigation }) {
       <FlatList
         data={providersToday}
         keyExtractor={(item) => item.id}
-        extraData={todayStatus}
+        extraData={{ todayStatus, stockLoadedStatus }}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
@@ -247,19 +257,32 @@ export default function HomeScreen({ navigation }) {
         renderItem={({ item }) => {
           const status = todayStatus.find((s) => s.provider.id === item.id);
           const done = status?.done ?? null;
+          const stockLoaded = stockLoadedStatus[item.id] ?? false;
+          const showPink = stockLoaded && done !== true;
           return (
             <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              style={({ pressed }) => [
+                styles.card,
+                showPink && styles.cardStockBg,
+                pressed && styles.cardPressed,
+              ]}
               onPress={() => navigation.navigate('Provider', { provider: item })}
             >
-              <View style={[styles.cardAccent, done === true && styles.cardAccentDone]} />
+              <View style={[
+                styles.cardAccent,
+                done === true && styles.cardAccentDone,
+                showPink && styles.cardAccentStock,
+              ]} />
               <View style={styles.cardBody}>
                 <View style={styles.cardTitleRow}>
                   <Text style={styles.cardTitle}>{item.name}</Text>
                   {done === true && (
                     <Ionicons name="checkmark-circle" size={18} color="#16a34a" />
                   )}
-                  {done === false && (
+                  {showPink && (
+                    <Ionicons name="cube-outline" size={18} color="#BE185D" />
+                  )}
+                  {done === false && !showPink && (
                     <Ionicons name="time-outline" size={18} color={COLORS.accent} />
                   )}
                 </View>
@@ -275,7 +298,10 @@ export default function HomeScreen({ navigation }) {
                   {done === true && (
                     <Text style={[styles.cardChip, styles.cardChipDone]}>Pedido hecho ✓</Text>
                   )}
-                  {done === false && (
+                  {showPink && (
+                    <Text style={[styles.cardChip, styles.cardChipStock]}>Stock cargado</Text>
+                  )}
+                  {done === false && !showPink && (
                     <Text style={[styles.cardChip, styles.cardChipPending]}>Pedido pendiente</Text>
                   )}
                 </View>
@@ -558,6 +584,12 @@ const styles = StyleSheet.create({
   cardAccentDone: {
     backgroundColor: '#16a34a',
   },
+  cardAccentStock: {
+    backgroundColor: '#F472B6',
+  },
+  cardStockBg: {
+    backgroundColor: '#FFF5FA',
+  },
   cardBody: {
     flex: 1,
     padding: 14,
@@ -602,6 +634,10 @@ const styles = StyleSheet.create({
   cardChipPending: {
     backgroundColor: COLORS.accentLight,
     color: COLORS.accentDark,
+  },
+  cardChipStock: {
+    backgroundColor: '#FCE7F3',
+    color: '#BE185D',
   },
   emptyBox: {
     backgroundColor: COLORS.card,

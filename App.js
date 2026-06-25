@@ -3,6 +3,7 @@ import { LogBox, Platform, Text, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import Toast from 'react-native-toast-message';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const MAX_FONT_SCALE = 1.2;
@@ -44,6 +45,7 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <AppNavigator />
+      <Toast />
     </SafeAreaProvider>
   );
 }

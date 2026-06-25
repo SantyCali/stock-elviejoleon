@@ -16,6 +16,7 @@ import { subscribeProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
 import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
+import Toast from 'react-native-toast-message';
 import { notifyOrderFinished } from '../services/activityNotificationService';
 import { COLORS } from '../theme';
 
@@ -208,6 +209,12 @@ export default function NewOrderScreen({ route, navigation }) {
       };
 
       clearPedirCache(provider.id);
+      Toast.show({
+        type: 'success',
+        text1: 'Pedido guardado',
+        text2: `El pedido para ${provider.name} quedó listo.`,
+        visibilityTime: 3000,
+      });
       setPendingShareOrder(orderToShare);
       setPreviewMode(false);
     } catch (error) {
