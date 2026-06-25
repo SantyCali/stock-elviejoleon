@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -60,6 +61,10 @@ export async function updateStockSnapshot(stockId, items) {
     items,
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function deleteStockSnapshot(stockId) {
+  await deleteDoc(doc(db, 'stocks', stockId));
 }
 
 export async function hasStockLoadedToday(providerId) {

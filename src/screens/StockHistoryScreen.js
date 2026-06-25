@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -8,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { subscribeAllStocks } from '../services/stockService';
+import { deleteStockSnapshot, subscribeAllStocks } from '../services/stockService';
 import { COLORS } from '../theme';
 
 function formatDate(createdAt) {
@@ -25,6 +26,7 @@ function formatDate(createdAt) {
 export default function StockHistoryScreen({ navigation }) {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     const unsubscribe = subscribeAllStocks((data) => {
@@ -33,6 +35,30 @@ export default function StockHistoryScreen({ navigation }) {
     });
     return unsubscribe;
   }, []);
+
+  function confirmDelete(stock) {
+    Alert.alert(
+      'Borrar stock',
+      `¿Seguro que querés borrar el stock de ${stock.providerName}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Borrar', style: 'destructive', onPress: () => handleDelete(stock.id) },
+      ]
+    );
+  }
+
+  async function handleDelete(stockId) {
+    try {
+      setDeletingId(stockId);
+      await deleteStockSnapshot(stockId);
+      // La lista se actualiza sola via onSnapshot
+    } catch (error) {
+      console.log('Error borrando stock:', error);
+      Alert.alert('Error', 'No se pudo borrar el stock.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -74,7 +100,6 @@ export default function StockHistoryScreen({ navigation }) {
             <View style={styles.cardBody}>
               <View style={styles.cardTitleRow}>
                 <Text style={styles.cardTitle}>{item.providerName}</Text>
-                <Ionicons name="create-outline" size={18} color="#BE185D" />
               </View>
               <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
               {!!item.createdByName && (
@@ -88,6 +113,27 @@ export default function StockHistoryScreen({ navigation }) {
                   <Text style={styles.cardChipEdited}>Editado</Text>
                 )}
               </View>
+            </View>
+            <View style={styles.cardActions}>
+              <Pressable
+                style={({ pressed }) => [styles.editBtn, pressed && styles.editBtnPressed]}
+                onPress={() => navigation.navigate('EditStock', { stock: item })}
+                hitSlop={4}
+              >
+                <Ionicons name="create-outline" size={18} color="#BE185D" />
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
+                onPress={() => confirmDelete(item)}
+                disabled={deletingId === item.id}
+                hitSlop={4}
+              >
+                {deletingId === item.id ? (
+                  <ActivityIndicator size={16} color="#fff" />
+                ) : (
+                  <Ionicons name="trash-outline" size={16} color="#fff" />
+                )}
+              </Pressable>
             </View>
           </Pressable>
         )}
@@ -213,4 +259,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#5B21B6',
   },
+  cardActions: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingRight: 12,
+  },
+  editBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FCE7F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBtnPressed: { backgroundColor: '#FBCFE8' },
+  deleteBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtnPressed: { backgroundColor: '#b91c1c' },
 });

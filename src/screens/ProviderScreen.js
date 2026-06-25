@@ -21,6 +21,7 @@ import { subscribeProductsByProvider } from '../services/productService';
 import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, moveProductToCategory, renameCategory, subscribeStandaloneCategories, updateProductName } from '../services/productAdminService';
 import { deleteProviderById, updateProviderDetails } from '../services/providerService';
 import { hasOrderDoneToday } from '../services/orderService';
+import { hasStockLoadedToday } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
 
@@ -38,6 +39,7 @@ export default function ProviderScreen({ route, navigation }) {
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [deletingId, setDeletingId] = useState(null);
   const [orderDoneToday, setOrderDoneToday] = useState(false);
+  const [stockLoadedToday, setStockLoadedToday] = useState(false);
 
   // Edit modal state
   const [editingProduct, setEditingProduct] = useState(null);
@@ -126,11 +128,13 @@ export default function ProviderScreen({ route, navigation }) {
     Promise.all([
       currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
       hasOrderDoneToday(currentProvider.id),
+      hasStockLoadedToday(currentProvider.id),
     ])
-      .then(([profile, doneToday]) => {
+      .then(([profile, doneToday, stockLoaded]) => {
         if (cancelled) return;
         setUserRole(profile?.role || null);
         setOrderDoneToday(doneToday);
+        setStockLoadedToday(stockLoaded);
       })
       .catch((error) => {
         console.log('Error cargando datos del proveedor:', error);
@@ -525,11 +529,13 @@ export default function ProviderScreen({ route, navigation }) {
     }));
   }, [derivedCategories, groupedProducts]);
 
+  const showPink = stockLoadedToday && !orderDoneToday;
+
   return (
     <View style={styles.container}>
       {/* Header card */}
-      <View style={[styles.headerCard, orderDoneToday && styles.headerCardDone]}>
-        <View style={[styles.headerAccentBar, orderDoneToday && styles.headerAccentBarDone]} />
+      <View style={[styles.headerCard, showPink && styles.headerCardStock, orderDoneToday && styles.headerCardDone]}>
+        <View style={[styles.headerAccentBar, showPink && styles.headerAccentBarStock, orderDoneToday && styles.headerAccentBarDone]} />
         <View style={styles.headerContent}>
           <View style={styles.titleRow}>
             <Text
@@ -540,6 +546,11 @@ export default function ProviderScreen({ route, navigation }) {
               {currentProvider.name}
             </Text>
 
+            {showPink && (
+              <View style={styles.stockBadge}>
+                <Text style={styles.stockBadgeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Stock cargado</Text>
+              </View>
+            )}
             {orderDoneToday && (
               <View style={styles.doneBadge}>
                 <Text style={styles.doneBadgeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>Pedido hecho</Text>
@@ -551,12 +562,12 @@ export default function ProviderScreen({ route, navigation }) {
               onPress={openProviderEditModal}
               hitSlop={8}
             >
-              <Ionicons name="pencil" size={16} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
+              <Ionicons name="pencil" size={16} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.accent} />
             </Pressable>
           </View>
 
           {!!currentProvider.alias?.length && (
-            <Text style={[styles.alias, orderDoneToday && styles.aliasDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            <Text style={[styles.alias, showPink && styles.aliasStock, orderDoneToday && styles.aliasDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               También conocido como: {currentProvider.alias.join(', ')}
             </Text>
           )}
@@ -564,8 +575,8 @@ export default function ProviderScreen({ route, navigation }) {
           <View style={styles.daysRow}>
             <Text style={styles.daysLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>📅</Text>
             {(currentProvider.days || []).map((day) => (
-              <View key={day} style={[styles.dayChip, orderDoneToday && styles.dayChipDone]}>
-                <Text style={[styles.dayChipText, orderDoneToday && styles.dayChipTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>{day}</Text>
+              <View key={day} style={[styles.dayChip, showPink && styles.dayChipStock, orderDoneToday && styles.dayChipDone]}>
+                <Text style={[styles.dayChipText, showPink && styles.dayChipTextStock, orderDoneToday && styles.dayChipTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>{day}</Text>
               </View>
             ))}
           </View>
@@ -574,35 +585,38 @@ export default function ProviderScreen({ route, navigation }) {
             <Pressable
               style={({ pressed }) => [
                 styles.outlineButton,
+                showPink && styles.outlineButtonStock,
                 orderDoneToday && styles.outlineButtonDone,
-                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : showPink ? styles.outlineButtonStockPressed : styles.outlineButtonPressed),
               ]}
               onPress={() => navigation.navigate('AddProduct', { provider: currentProvider })}
             >
-              <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Agregar artículo</Text>
+              <Text style={[styles.outlineButtonText, showPink && styles.outlineButtonTextStock, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Agregar artículo</Text>
             </Pressable>
 
             <Pressable
               style={({ pressed }) => [
                 styles.outlineButton,
+                showPink && styles.outlineButtonStock,
                 orderDoneToday && styles.outlineButtonDone,
-                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+                pressed && (orderDoneToday ? styles.outlineButtonDonePressed : showPink ? styles.outlineButtonStockPressed : styles.outlineButtonPressed),
               ]}
               onPress={openCreateCat}
             >
-              <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Categoría</Text>
+              <Text style={[styles.outlineButtonText, showPink && styles.outlineButtonTextStock, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>+ Categoría</Text>
             </Pressable>
 
             {userRole === 'jefe' && (
               <Pressable
                 style={({ pressed }) => [
                   styles.outlineButton,
+                  showPink && styles.outlineButtonStock,
                   orderDoneToday && styles.outlineButtonDone,
-                  pressed && (orderDoneToday ? styles.outlineButtonDonePressed : styles.outlineButtonPressed),
+                  pressed && (orderDoneToday ? styles.outlineButtonDonePressed : showPink ? styles.outlineButtonStockPressed : styles.outlineButtonPressed),
                 ]}
                 onPress={() => navigation.navigate('ProviderOrderHistory', { provider: currentProvider })}
               >
-                <Text style={[styles.outlineButtonText, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>Últimos 5 pedidos</Text>
+                <Text style={[styles.outlineButtonText, showPink && styles.outlineButtonTextStock, orderDoneToday && styles.outlineButtonTextDone]} maxFontSizeMultiplier={MAX_FONT_SCALE}>Últimos 5 pedidos</Text>
               </Pressable>
             )}
           </View>
@@ -636,25 +650,25 @@ export default function ProviderScreen({ route, navigation }) {
           renderItem={({ item }) => {
             const expanded = expandedCategories.has(item.category);
             return (
-              <View style={[styles.categoryCard, orderDoneToday && styles.categoryCardDone]}>
+              <View style={[styles.categoryCard, showPink && styles.categoryCardStock, orderDoneToday && styles.categoryCardDone]}>
                 {/* Header tocable */}
                 <Pressable
                   style={({ pressed }) => [
                     styles.categoryHeader,
-                    pressed && (orderDoneToday ? styles.categoryHeaderDonePressed : styles.categoryHeaderPressed),
+                    pressed && (orderDoneToday ? styles.categoryHeaderDonePressed : showPink ? styles.categoryHeaderStockPressed : styles.categoryHeaderPressed),
                   ]}
                   onPress={() => toggleCategory(item.category)}
                 >
-                  <View style={[styles.categoryDot, orderDoneToday && styles.categoryDotDone]} />
+                  <View style={[styles.categoryDot, showPink && styles.categoryDotStock, orderDoneToday && styles.categoryDotDone]} />
                   <Text
-                    style={[styles.categoryTitle, orderDoneToday && styles.categoryTitleDone]}
+                    style={[styles.categoryTitle, showPink && styles.categoryTitleStock, orderDoneToday && styles.categoryTitleDone]}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}
                   >
                     {item.category}
                   </Text>
-                  <View style={[styles.categoryCount, orderDoneToday && styles.categoryCountDone]}>
+                  <View style={[styles.categoryCount, showPink && styles.categoryCountStock, orderDoneToday && styles.categoryCountDone]}>
                     <Text
-                      style={[styles.categoryCountText, orderDoneToday && styles.categoryCountTextDone]}
+                      style={[styles.categoryCountText, showPink && styles.categoryCountTextStock, orderDoneToday && styles.categoryCountTextDone]}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     >
                       {item.items.length}
@@ -668,7 +682,7 @@ export default function ProviderScreen({ route, navigation }) {
                     onPress={() => openMoveCat(item.category)}
                     hitSlop={6}
                   >
-                    <Ionicons name="arrow-redo-outline" size={16} color={orderDoneToday ? '#16a34a' : COLORS.textSecondary} />
+                    <Ionicons name="arrow-redo-outline" size={16} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.textSecondary} />
                   </Pressable>
                   <Pressable
                     style={({ pressed }) => [
@@ -678,12 +692,12 @@ export default function ProviderScreen({ route, navigation }) {
                     onPress={() => openEditCat(item.category)}
                     hitSlop={6}
                   >
-                    <Ionicons name="pencil" size={15} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
+                    <Ionicons name="pencil" size={15} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.accent} />
                   </Pressable>
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={16}
-                    color={orderDoneToday ? '#16a34a' : COLORS.textSecondary}
+                    color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.textSecondary}
                     style={styles.chevron}
                   />
                 </Pressable>
@@ -693,9 +707,9 @@ export default function ProviderScreen({ route, navigation }) {
                   <View style={styles.productList}>
                     {item.items.map((product) => (
                       <View key={product.id} style={styles.productRow}>
-                        <View style={[styles.productBullet, orderDoneToday && styles.productBulletDone]} />
+                        <View style={[styles.productBullet, showPink && styles.productBulletStock, orderDoneToday && styles.productBulletDone]} />
                         <Text
-                          style={[styles.productName, orderDoneToday && styles.productNameDone]}
+                          style={[styles.productName, showPink && styles.productNameStock, orderDoneToday && styles.productNameDone]}
                           maxFontSizeMultiplier={MAX_FONT_SCALE}
                         >
                           {product.name}
@@ -711,7 +725,7 @@ export default function ProviderScreen({ route, navigation }) {
                             onPress={() => openEditModal(product)}
                             disabled={deletingId === product.id}
                           >
-                            <Ionicons name="create-outline" size={17} color={orderDoneToday ? '#16a34a' : COLORS.accent} />
+                            <Ionicons name="create-outline" size={17} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.accent} />
                           </Pressable>
 
                           {/* Mover a otra categoría */}
@@ -723,7 +737,7 @@ export default function ProviderScreen({ route, navigation }) {
                             onPress={() => openMoveProd(product)}
                             disabled={deletingId === product.id}
                           >
-                            <Ionicons name="arrow-redo-outline" size={17} color={orderDoneToday ? '#16a34a' : COLORS.textSecondary} />
+                            <Ionicons name="arrow-redo-outline" size={17} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.textSecondary} />
                           </Pressable>
 
                           {/* Eliminar */}
@@ -757,8 +771,9 @@ export default function ProviderScreen({ route, navigation }) {
         <Pressable
           style={({ pressed }) => [
             styles.button,
+            showPink && styles.buttonStock,
             orderDoneToday && styles.buttonDone,
-            pressed && (orderDoneToday ? styles.buttonDonePressed : styles.buttonPressed),
+            pressed && (orderDoneToday ? styles.buttonDonePressed : showPink ? styles.buttonStockPressed : styles.buttonPressed),
           ]}
           onPress={() => navigation.navigate('Stock', { provider: currentProvider })}
         >
@@ -769,13 +784,14 @@ export default function ProviderScreen({ route, navigation }) {
           <Pressable
             style={({ pressed }) => [
               styles.secondaryButton,
+              showPink && styles.secondaryButtonStock,
               orderDoneToday && styles.secondaryButtonDone,
-              pressed && (orderDoneToday ? styles.secondaryButtonDonePressed : styles.secondaryButtonPressed),
+              pressed && (orderDoneToday ? styles.secondaryButtonDonePressed : showPink ? styles.secondaryButtonStockPressed : styles.secondaryButtonPressed),
             ]}
             onPress={() => navigation.navigate('NewOrder', { provider: currentProvider })}
           >
             <Text
-              style={[styles.secondaryButtonText, orderDoneToday && styles.secondaryButtonTextDone]}
+              style={[styles.secondaryButtonText, showPink && styles.secondaryButtonTextStock, orderDoneToday && styles.secondaryButtonTextDone]}
               maxFontSizeMultiplier={MAX_FONT_SCALE}
             >
               🛒  Hacer pedido
@@ -1265,6 +1281,11 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  headerCardStock: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#F472B6',
+    backgroundColor: '#FFF5FA',
+  },
   headerCardDone: {
     borderLeftWidth: 4,
     borderLeftColor: '#16a34a',
@@ -1273,6 +1294,9 @@ const styles = StyleSheet.create({
   headerAccentBar: {
     height: 5,
     backgroundColor: COLORS.accent,
+  },
+  headerAccentBarStock: {
+    backgroundColor: '#F472B6',
   },
   headerAccentBarDone: {
     backgroundColor: '#16a34a',
@@ -1294,6 +1318,18 @@ const styles = StyleSheet.create({
   },
   titleDone: {
     color: '#111827',
+  },
+  stockBadge: {
+    backgroundColor: '#FCE7F3',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    marginTop: 1,
+  },
+  stockBadgeText: {
+    color: '#9D174D',
+    fontSize: 11,
+    fontWeight: '800',
   },
   doneBadge: {
     backgroundColor: '#DCFCE7',
@@ -1323,6 +1359,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 10,
   },
+  aliasStock: {
+    color: '#BE185D',
+  },
   aliasDone: {
     color: '#166534',
   },
@@ -1343,6 +1382,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
   },
+  dayChipStock: {
+    backgroundColor: '#FCE7F3',
+  },
   dayChipDone: {
     backgroundColor: '#DCFCE7',
   },
@@ -1351,6 +1393,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.accentDark,
     textTransform: 'capitalize',
+  },
+  dayChipTextStock: {
+    color: '#BE185D',
   },
   dayChipTextDone: {
     color: '#166534',
@@ -1374,6 +1419,13 @@ const styles = StyleSheet.create({
   outlineButtonPressed: {
     backgroundColor: COLORS.accentLight,
   },
+  outlineButtonStock: {
+    borderColor: '#F472B6',
+    backgroundColor: '#FFF5FA',
+  },
+  outlineButtonStockPressed: {
+    backgroundColor: '#FCE7F3',
+  },
   outlineButtonDone: {
     borderColor: '#16a34a',
     backgroundColor: '#F0FDF4',
@@ -1387,6 +1439,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 17,
+  },
+  outlineButtonTextStock: {
+    color: '#BE185D',
   },
   outlineButtonTextDone: {
     color: '#166534',
@@ -1438,6 +1493,11 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
+  categoryCardStock: {
+    backgroundColor: '#FFF5FA',
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+  },
   categoryCardDone: {
     backgroundColor: '#F0FDF4',
     borderWidth: 1,
@@ -1451,6 +1511,9 @@ const styles = StyleSheet.create({
   categoryHeaderPressed: {
     backgroundColor: COLORS.cardAlt,
   },
+  categoryHeaderStockPressed: {
+    backgroundColor: '#FCE7F3',
+  },
   categoryHeaderDonePressed: {
     backgroundColor: '#DCFCE7',
   },
@@ -1460,6 +1523,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: COLORS.accent,
     marginRight: 8,
+  },
+  categoryDotStock: {
+    backgroundColor: '#F472B6',
   },
   categoryDotDone: {
     backgroundColor: '#16a34a',
@@ -1473,6 +1539,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     lineHeight: 20,
   },
+  categoryTitleStock: {
+    color: '#9D174D',
+  },
   categoryTitleDone: {
     color: '#14532d',
   },
@@ -1483,6 +1552,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     marginRight: 6,
   },
+  categoryCountStock: {
+    backgroundColor: '#FBCFE8',
+  },
   categoryCountDone: {
     backgroundColor: '#BBF7D0',
   },
@@ -1490,6 +1562,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.accentDark,
+  },
+  categoryCountTextStock: {
+    color: '#BE185D',
   },
   categoryCountTextDone: {
     color: '#166534',
@@ -1518,6 +1593,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     opacity: 0.6,
   },
+  productBulletStock: {
+    backgroundColor: '#F472B6',
+    opacity: 1,
+  },
   productBulletDone: {
     backgroundColor: '#16a34a',
     opacity: 1,
@@ -1527,6 +1606,9 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 14,
     lineHeight: 20,
+  },
+  productNameStock: {
+    color: '#9D174D',
   },
   productNameDone: {
     color: '#166534',
@@ -1635,6 +1717,13 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: COLORS.accentDark,
   },
+  buttonStock: {
+    backgroundColor: '#F472B6',
+    shadowColor: '#BE185D',
+  },
+  buttonStockPressed: {
+    backgroundColor: '#EC4899',
+  },
   buttonDone: {
     backgroundColor: '#16a34a',
     shadowColor: '#166534',
@@ -1660,6 +1749,13 @@ const styles = StyleSheet.create({
   secondaryButtonPressed: {
     backgroundColor: COLORS.accentLight,
   },
+  secondaryButtonStock: {
+    backgroundColor: '#FFF5FA',
+    borderColor: '#F472B6',
+  },
+  secondaryButtonStockPressed: {
+    backgroundColor: '#FCE7F3',
+  },
   secondaryButtonDone: {
     backgroundColor: '#F0FDF4',
     borderColor: '#16a34a',
@@ -1673,6 +1769,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  secondaryButtonTextStock: {
+    color: '#BE185D',
   },
   secondaryButtonTextDone: {
     color: '#166534',
