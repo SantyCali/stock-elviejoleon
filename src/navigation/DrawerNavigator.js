@@ -21,12 +21,14 @@ import SendNotificationScreen from '../screens/SendNotificationScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import StockHistoryScreen from '../screens/StockHistoryScreen';
 import EditStockScreen from '../screens/EditStockScreen';
+import PresenceScreen from '../screens/PresenceScreen';
 
 import {
   getCurrentUser,
   getUserProfile,
   signOutUser,
 } from '../services/authService';
+import { stopPresenceTracking } from '../services/presenceService';
 import { COLORS } from '../theme';
 
 const Drawer = createDrawerNavigator();
@@ -153,6 +155,11 @@ function AppStack({ navigation: drawerNav }) {
           component={EditStockScreen}
           options={{ title: 'Editar stock' }}
         />
+        <Stack.Screen
+          name="Presence"
+          component={PresenceScreen}
+          options={{ title: 'Quién está en el negocio' }}
+        />
     </Stack.Navigator>
   );
 }
@@ -185,6 +192,8 @@ function CustomDrawerContent(props) {
 
   async function handleLogout() {
     try {
+      const currentUser = getCurrentUser();
+      await stopPresenceTracking(currentUser?.uid);
       await signOutUser();
     } catch (error) {
       console.log('Error cerrando sesión:', error);
@@ -251,6 +260,14 @@ function CustomDrawerContent(props) {
           >
             <Text style={styles.itemIcon}>📦</Text>
             <Text style={styles.itemText}>Historial de stock</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.item, styles.itemPresence, pressed && styles.itemPresencePressed]}
+            onPress={() => goTo('Presence')}
+          >
+            <Text style={styles.itemIcon}>🧑‍🤝‍🧑</Text>
+            <Text style={styles.itemText}>Quién está en el negocio</Text>
           </Pressable>
 
           <Pressable
@@ -470,6 +487,14 @@ const styles = StyleSheet.create({
   },
   itemStockPressed: {
     backgroundColor: '#FCE7F3',
+  },
+  itemPresence: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: COLORS.success,
+  },
+  itemPresencePressed: {
+    backgroundColor: '#D1FAE5',
   },
   itemNotif: {
     backgroundColor: COLORS.accentLight,

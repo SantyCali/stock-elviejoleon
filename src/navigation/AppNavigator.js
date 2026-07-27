@@ -6,8 +6,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import DrawerNavigator from './DrawerNavigator';
-import { observeAuthState } from '../services/authService';
+import { getUserProfile, observeAuthState } from '../services/authService';
 import { savePushToken } from '../services/pushTokenService';
+import { ensurePresenceTracking } from '../services/presenceService';
 import { COLORS } from '../theme';
 
 const Stack = createNativeStackNavigator();
@@ -30,6 +31,11 @@ export default function AppNavigator() {
       setCheckingAuth(false);
       if (firebaseUser) {
         savePushToken(firebaseUser.uid);
+        getUserProfile(firebaseUser.uid)
+          .then((profile) => {
+            if (profile) ensurePresenceTracking(profile);
+          })
+          .catch(() => {});
       }
     });
     return unsubscribe;
