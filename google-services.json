@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "991613535410",
+    "firebase_url": "https://stock-el-viejo-leon-default-rtdb.firebaseio.com",
+    "project_id": "stock-el-viejo-leon",
+    "storage_bucket": "stock-el-viejo-leon.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:991613535410:android:53ccee2123ccc5304735ab",
+        "android_client_info": {
+          "package_name": "com.elviejoleon.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD19PJmtgR5fpmNh1xLcvFDQqgjMlzUA7M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
