@@ -19,14 +19,15 @@ import ShareOrderScreen from '../screens/ShareOrderScreen';
 import ProviderOrderHistoryScreen from '../screens/ProviderOrderHistoryScreen';
 import SendNotificationScreen from '../screens/SendNotificationScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import EditNameScreen from '../screens/EditNameScreen';
 import StockHistoryScreen from '../screens/StockHistoryScreen';
 import EditStockScreen from '../screens/EditStockScreen';
 import PresenceScreen from '../screens/PresenceScreen';
 
 import {
   getCurrentUser,
-  getUserProfile,
   signOutUser,
+  subscribeUserProfile,
 } from '../services/authService';
 import { stopPresenceTracking } from '../services/presenceService';
 import { COLORS } from '../theme';
@@ -128,7 +129,15 @@ function AppStack({ navigation: drawerNav }) {
         <Stack.Screen
           name="ShareOrder"
           component={ShareOrderScreen}
-          options={{ title: 'Compartir pedido' }}
+          options={({ route }) => ({
+            title: 'Compartir pedido',
+            // Viniendo de crear el pedido no se puede volver: el formulario sigue
+            // atrás en la pila y volver ahí podría duplicarlo. Desde el historial
+            // en cambio se vuelve normal, para no perder el lugar en la lista.
+            ...(route.params?.fromNewOrder
+              ? { headerLeft: () => null, gestureEnabled: false }
+              : {}),
+          })}
         />
         <Stack.Screen
           name="ProviderOrderHistory"
@@ -144,6 +153,11 @@ function AppStack({ navigation: drawerNav }) {
           name="ChangePassword"
           component={ChangePasswordScreen}
           options={{ title: 'Cambiar contraseña' }}
+        />
+        <Stack.Screen
+          name="EditName"
+          component={EditNameScreen}
+          options={{ title: 'Editar nombre' }}
         />
         <Stack.Screen
           name="StockHistory"
@@ -176,19 +190,11 @@ function CustomDrawerContent(props) {
   const isSanti = currentUserEmail === SANTI_EMAIL;
 
   useEffect(() => {
-    loadProfile();
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
+    const unsubscribe = subscribeUserProfile(currentUser.uid, setProfile);
+    return unsubscribe;
   }, []);
-
-  async function loadProfile() {
-    try {
-      const currentUser = getCurrentUser();
-      if (!currentUser) return;
-      const userProfile = await getUserProfile(currentUser.uid);
-      setProfile(userProfile);
-    } catch (error) {
-      console.log('Error cargando perfil:', error);
-    }
-  }
 
   async function handleLogout() {
     try {
@@ -223,17 +229,28 @@ function CustomDrawerContent(props) {
           <Text style={styles.headerSubtitle}>Menú principal</Text>
 
           {!!profile && (
-            <View style={styles.userBox}>
-              <Text style={styles.userName}>
-                {profile.name || 'Sin nombre'}
-              </Text>
+            <Pressable
+              style={({ pressed }) => [styles.userBox, pressed && styles.userBoxPressed]}
+              onPress={() =>
+                props.navigation.navigate('App', {
+                  screen: 'EditName',
+                  params: { currentName: profile.name || '' },
+                })
+              }
+            >
+              <View style={styles.userNameRow}>
+                <Text style={styles.userName}>
+                  {profile.name || 'Sin nombre'}
+                </Text>
+                <Ionicons name="create-outline" size={15} color="#fff" />
+              </View>
               {!!profile.username && (
                 <Text style={styles.userMeta}>@{profile.username}</Text>
               )}
               <View style={styles.roleBadge}>
                 <Text style={styles.roleBadgeText}>{formatRole(profile.role)}</Text>
               </View>
-            </View>
+            </Pressable>
           )}
         </View>
 
@@ -441,11 +458,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
   },
+  userBoxPressed: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
   userName: {
     fontSize: 16,
     fontWeight: '800',
     color: '#fff',
-    marginBottom: 2,
   },
   userMeta: {
     fontSize: 13,

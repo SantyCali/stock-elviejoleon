@@ -3,7 +3,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -75,51 +74,8 @@ export async function getRecentOrdersByProvider(providerId, limitCount = 5) {
   }));
 }
 
-export async function hasOrderToday(providerId) {
-  try {
-    const lastOrder = await getLastOrderByProvider(providerId);
-    if (!lastOrder || !lastOrder.createdAt) return false;
-
-    const orderDate = lastOrder.createdAt?.toDate
-      ? lastOrder.createdAt.toDate()
-      : new Date(lastOrder.createdAt);
-
-    const today = new Date();
-    return (
-      orderDate.getDate() === today.getDate() &&
-      orderDate.getMonth() === today.getMonth() &&
-      orderDate.getFullYear() === today.getFullYear()
-    );
-  } catch {
-    return false;
-  }
-}
-
 function getManualCompletionId(providerId, dateKey = getTodayKey()) {
   return `${dateKey}_${encodeURIComponent(providerId)}`;
-}
-
-export async function hasManualOrderCompletionToday(providerId) {
-  try {
-    const completionRef = doc(
-      db,
-      'manualOrderCompletions',
-      getManualCompletionId(providerId)
-    );
-    const snapshot = await getDoc(completionRef);
-    return snapshot.exists();
-  } catch {
-    return false;
-  }
-}
-
-export async function hasOrderDoneToday(providerId) {
-  const [hasRealOrder, hasManualCompletion] = await Promise.all([
-    hasOrderToday(providerId),
-    hasManualOrderCompletionToday(providerId),
-  ]);
-
-  return hasRealOrder || hasManualCompletion;
 }
 
 export async function markOrderDoneToday(provider) {

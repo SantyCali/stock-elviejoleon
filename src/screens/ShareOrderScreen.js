@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -39,10 +39,35 @@ function escapeHtml(text) {
 }
 
 export default function ShareOrderScreen({ route, navigation }) {
-  const { order } = route.params;
+  const { order, fromNewOrder = false } = route.params;
   const insets = useSafeAreaInsets();
   const [sharingPdf, setSharingPdf] = useState(false);
   const [sharingText, setSharingText] = useState(false);
+
+  // Recién creado el pedido, la única salida es el botón: así se bloquea también
+  // el botón físico de Android, que si no volvería al formulario.
+  const leavingToHome = useRef(false);
+
+  useEffect(() => {
+    if (!fromNewOrder) return;
+
+    const unsubscribe = navigation.addListener('beforeRemove', (event) => {
+      if (leavingToHome.current) return;
+      event.preventDefault();
+    });
+
+    return unsubscribe;
+  }, [navigation, fromNewOrder]);
+
+  function handleLeave() {
+    if (!fromNewOrder) {
+      navigation.goBack();
+      return;
+    }
+
+    leavingToHome.current = true;
+    navigation.navigate('Inicio');
+  }
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -232,9 +257,11 @@ export default function ShareOrderScreen({ route, navigation }) {
 
         <Pressable
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={() => navigation.goBack()}
+          onPress={handleLeave}
         >
-          <Text style={styles.secondaryButtonText}>Volver</Text>
+          <Text style={styles.secondaryButtonText}>
+            {fromNewOrder ? 'Volver al home' : 'Volver'}
+          </Text>
         </Pressable>
       </View>
     </View>

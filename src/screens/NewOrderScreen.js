@@ -18,6 +18,7 @@ import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import Toast from 'react-native-toast-message';
 import { notifyOrderFinished } from '../services/activityNotificationService';
+import { markOrderedLocally } from '../services/todayStatusService';
 import { COLORS } from '../theme';
 
 const pedirCache = {};
@@ -44,7 +45,7 @@ export default function NewOrderScreen({ route, navigation }) {
     if (!previewMode && pendingShareOrder) {
       const order = pendingShareOrder;
       setPendingShareOrder(null);
-      navigation.navigate('ShareOrder', { order });
+      navigation.navigate('ShareOrder', { order, fromNewOrder: true });
     }
   }, [previewMode]);
 
@@ -190,6 +191,8 @@ export default function NewOrderScreen({ route, navigation }) {
         createdByUsername: profile?.username || null,
         items: itemsToSave,
       });
+
+      markOrderedLocally(provider.id);
 
       notifyOrderFinished({
         profile,

@@ -113,27 +113,67 @@ export async function getStandaloneCategories(providerId) {
   }
 }
 
+// Son ~20 documentos en total: un solo listener compartido para toda la app.
+let categoriesByProvider = null;
+let unsubscribeCategories = null;
+const categoryListeners = new Set();
+
+function startCategoriesListener() {
+  if (unsubscribeCategories) return;
+
+  unsubscribeCategories = onSnapshot(
+    collection(db, 'providerCategories'),
+    (snapshot) => {
+      const map = new Map();
+      snapshot.docs.forEach((docItem) => {
+        const { providerId, name } = docItem.data();
+        if (!providerId || !name) return;
+        const current = map.get(providerId);
+        if (current) {
+          current.push(name);
+        } else {
+          map.set(providerId, [name]);
+        }
+      });
+      categoriesByProvider = map;
+      categoryListeners.forEach((listener) => {
+        listener.onData(categoriesByProvider.get(listener.providerId) || []);
+      });
+    },
+    (error) => {
+      console.log('Error escuchando categorias del proveedor:', error);
+      if (unsubscribeCategories) unsubscribeCategories();
+      unsubscribeCategories = null;
+      categoriesByProvider = null;
+      categoryListeners.forEach((listener) => {
+        if (listener.onError) listener.onError(error);
+      });
+    }
+  );
+}
+
+export function getCachedStandaloneCategories(providerId) {
+  if (categoriesByProvider === null) return null;
+  return categoriesByProvider.get(providerId) || [];
+}
+
 export function subscribeStandaloneCategories(providerId, onData, onError) {
   if (!providerId) {
     onData([]);
     return () => {};
   }
 
-  const q = query(
-    collection(db, 'providerCategories'),
-    where('providerId', '==', providerId)
-  );
+  startCategoriesListener();
 
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      onData(snapshot.docs.map((d) => d.data().name).filter(Boolean));
-    },
-    (error) => {
-      console.log('Error escuchando categorias del proveedor:', error);
-      if (onError) onError(error);
-    }
-  );
+  const listener = { providerId, onData, onError };
+  categoryListeners.add(listener);
+
+  const cached = getCachedStandaloneCategories(providerId);
+  if (cached !== null) onData(cached);
+
+  return () => {
+    categoryListeners.delete(listener);
+  };
 }
 
 export async function createStandaloneCategory(providerId, name) {

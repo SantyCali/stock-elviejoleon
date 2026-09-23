@@ -16,12 +16,17 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Reanimated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { subscribeProductsByProvider } from '../services/productService';
-import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, moveProductToCategory, renameCategory, subscribeStandaloneCategories, updateProductName } from '../services/productAdminService';
+import { getCachedProductsByProvider, subscribeProductsByProvider } from '../services/productService';
+import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, getCachedStandaloneCategories, moveProductToCategory, renameCategory, subscribeStandaloneCategories, updateProductName } from '../services/productAdminService';
 import { deleteProviderById, updateProviderDetails } from '../services/providerService';
-import { hasOrderDoneToday } from '../services/orderService';
-import { hasStockLoadedToday } from '../services/stockService';
+import { subscribeTodayStatus } from '../services/todayStatusService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
 
@@ -29,12 +34,95 @@ const MAX_FONT_SCALE = 1.2;
 const DAYS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const FREQUENCIES = ['semanal', 'quincenal', 'mensual'];
 
+const EXPAND_DURATION = 280;
+const COLLAPSE_DURATION = 220;
+const EXPAND_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
+
+// Acordeón: el contenido se mide con onLayout y la altura del contenedor se
+// anima de 0 a esa altura, así la lista se despliega en vez de aparecer de golpe.
+//
+// Importante: los hijos NO se montan hasta que la categoría se abre por primera vez.
+// Montarlos siempre significaba construir cientos de filas (con sus Pressables e
+// iconos) al entrar al proveedor, y eso trababa la navegación casi un segundo.
+function Collapsible({ expanded, children }) {
+  const [contentHeight, setContentHeight] = useState(0);
+  const [everOpened, setEverOpened] = useState(expanded);
+  const progress = useSharedValue(expanded ? 1 : 0);
+  const height = useSharedValue(0);
+
+  useEffect(() => {
+    if (expanded) setEverOpened(true);
+  }, [expanded]);
+
+  useEffect(() => {
+    // Primera medición: sin animar. Después (ej. al borrar un producto) acompaña el cambio.
+    height.value = height.value === 0
+      ? contentHeight
+      : withTiming(contentHeight, { duration: COLLAPSE_DURATION, easing: EXPAND_EASING });
+  }, [contentHeight, height]);
+
+  useEffect(() => {
+    // Al abrir por primera vez hay que esperar la medición, si no el contenido
+    // saltaría a media altura en lugar de deslizarse.
+    if (expanded && contentHeight === 0) return;
+
+    progress.value = withTiming(expanded ? 1 : 0, {
+      duration: expanded ? EXPAND_DURATION : COLLAPSE_DURATION,
+      easing: EXPAND_EASING,
+    });
+  }, [expanded, contentHeight, progress]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    height: progress.value * height.value,
+    opacity: progress.value,
+  }));
+
+  const contentStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * -12 }],
+  }));
+
+  return (
+    <Reanimated.View style={[styles.collapsible, containerStyle]} pointerEvents={expanded ? 'auto' : 'none'}>
+      <Reanimated.View
+        style={[styles.collapsibleContent, contentStyle]}
+        onLayout={(event) => {
+          const measured = event.nativeEvent.layout.height;
+          if (measured > 0 && measured !== contentHeight) setContentHeight(measured);
+        }}
+      >
+        {everOpened ? children : null}
+      </Reanimated.View>
+    </Reanimated.View>
+  );
+}
+
+function AnimatedChevron({ expanded, color }) {
+  const progress = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withTiming(expanded ? 1 : 0, {
+      duration: expanded ? EXPAND_DURATION : COLLAPSE_DURATION,
+      easing: EXPAND_EASING,
+    });
+  }, [expanded, progress]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${progress.value * 180}deg` }],
+  }));
+
+  return (
+    <Reanimated.View style={[styles.chevron, style]}>
+      <Ionicons name="chevron-down" size={16} color={color} />
+    </Reanimated.View>
+  );
+}
+
 export default function ProviderScreen({ route, navigation }) {
   const { provider } = route.params;
   const insets = useSafeAreaInsets();
   const [currentProvider, setCurrentProvider] = useState(provider);
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(() => getCachedProductsByProvider(provider.id) || []);
+  const [loading, setLoading] = useState(() => getCachedProductsByProvider(provider.id) === null);
   const [userRole, setUserRole] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [deletingId, setDeletingId] = useState(null);
@@ -87,63 +175,61 @@ export default function ProviderScreen({ route, navigation }) {
   const [moveProdSaving, setMoveProdSaving] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    let productsReady = false;
-    let categoriesReady = false;
     let cancelled = false;
 
-    function finishInitialLoad() {
-      if (!cancelled && productsReady && categoriesReady) {
-        setLoading(false);
-      }
-    }
+    // Si hay catálogo en memoria no hace falta spinner: se pinta al instante.
+    const cachedProducts = getCachedProductsByProvider(currentProvider.id);
+    setProducts(cachedProducts || []);
+    setLoading(cachedProducts === null);
 
+    const cachedCategories = getCachedStandaloneCategories(currentProvider.id);
+    if (cachedCategories) setStandaloneCategories(cachedCategories);
+
+    // Los productos son lo único que bloquea el render; las categorías sueltas
+    // solo alimentan los menús de mover/crear y pueden llegar después.
     const unsubscribeProducts = subscribeProductsByProvider(
       currentProvider.id,
       (data) => {
-        productsReady = true;
+        if (cancelled) return;
         setProducts(data);
-        finishInitialLoad();
+        setLoading(false);
       },
       () => {
-        productsReady = true;
-        finishInitialLoad();
+        if (!cancelled) setLoading(false);
       }
     );
 
     const unsubscribeCategories = subscribeStandaloneCategories(
       currentProvider.id,
       (data) => {
-        categoriesReady = true;
-        setStandaloneCategories(data);
-        finishInitialLoad();
+        if (!cancelled) setStandaloneCategories(data);
       },
-      () => {
-        categoriesReady = true;
-        finishInitialLoad();
-      }
+      () => {}
     );
 
+    const unsubscribeStatus = subscribeTodayStatus(({ ordered, stocked }) => {
+      if (cancelled) return;
+      setOrderDoneToday(ordered.has(currentProvider.id));
+      setStockLoadedToday(stocked.has(currentProvider.id));
+    });
+
     const currentUser = getCurrentUser();
-    Promise.all([
-      currentUser ? getUserProfile(currentUser.uid) : Promise.resolve(null),
-      hasOrderDoneToday(currentProvider.id),
-      hasStockLoadedToday(currentProvider.id),
-    ])
-      .then(([profile, doneToday, stockLoaded]) => {
-        if (cancelled) return;
-        setUserRole(profile?.role || null);
-        setOrderDoneToday(doneToday);
-        setStockLoadedToday(stockLoaded);
-      })
-      .catch((error) => {
-        console.log('Error cargando datos del proveedor:', error);
-      });
+    if (currentUser) {
+      getUserProfile(currentUser.uid)
+        .then((profile) => {
+          if (cancelled) return;
+          setUserRole(profile?.role || null);
+        })
+        .catch((error) => {
+          console.log('Error cargando perfil del usuario:', error);
+        });
+    }
 
     return () => {
       cancelled = true;
       unsubscribeProducts();
       unsubscribeCategories();
+      unsubscribeStatus();
     };
   }, [currentProvider.id]);
 
@@ -694,16 +780,14 @@ export default function ProviderScreen({ route, navigation }) {
                   >
                     <Ionicons name="pencil" size={15} color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.accent} />
                   </Pressable>
-                  <Ionicons
-                    name={expanded ? 'chevron-up' : 'chevron-down'}
-                    size={16}
+                  <AnimatedChevron
+                    expanded={expanded}
                     color={orderDoneToday ? '#16a34a' : showPink ? '#BE185D' : COLORS.textSecondary}
-                    style={styles.chevron}
                   />
                 </Pressable>
 
-                {/* Productos (visible solo si expandido) */}
-                {expanded && (
+                {/* Productos: se deslizan al abrir/cerrar */}
+                <Collapsible expanded={expanded}>
                   <View style={styles.productList}>
                     {item.items.map((product) => (
                       <View key={product.id} style={styles.productRow}>
@@ -759,7 +843,7 @@ export default function ProviderScreen({ route, navigation }) {
                       </View>
                     ))}
                   </View>
-                )}
+                </Collapsible>
               </View>
             );
           }}
@@ -801,6 +885,7 @@ export default function ProviderScreen({ route, navigation }) {
       </View>
 
       {/* Modal editar nombre de proveedor */}
+      {providerEditVisible && (
       <Modal
         visible={providerEditVisible}
         transparent
@@ -934,8 +1019,10 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Modal crear categoría */}
+      {createCatVisible && (
       <Modal
         visible={createCatVisible}
         transparent
@@ -992,8 +1079,10 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Modal editar categoría */}
+      {editCatVisible && (
       <Modal
         visible={editCatVisible}
         transparent
@@ -1071,8 +1160,10 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Modal mover categoría */}
+      {moveCatVisible && (
       <Modal
         visible={moveCatVisible}
         transparent
@@ -1130,8 +1221,10 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Modal mover artículo a otra categoría */}
+      {moveProdVisible && (
       <Modal
         visible={moveProdVisible}
         transparent
@@ -1189,8 +1282,10 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Modal editar nombre de artículo */}
+      {editModalVisible && (
       <Modal
         visible={editModalVisible}
         transparent
@@ -1260,6 +1355,7 @@ export default function ProviderScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
     </View>
   );
 }
@@ -1572,6 +1668,16 @@ const styles = StyleSheet.create({
   chevron: {
     marginLeft: 2,
     marginTop: 7,
+  },
+  collapsible: {
+    overflow: 'hidden',
+  },
+  // Absoluto para que reporte su altura natural aunque el contenedor esté colapsado.
+  collapsibleContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   productList: {
     paddingHorizontal: 14,

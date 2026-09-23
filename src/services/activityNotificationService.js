@@ -31,3 +31,13 @@ export function notifyOrderFinished({ profile, providerName }) {
     `${actor} ya termino el pedido de ${cleanProviderName} :D`
   );
 }
+
+export function notifyStockEdited({ profile, providerName }) {
+  const actor = getActorName(profile);
+  const cleanProviderName = String(providerName || 'un proveedor').trim();
+
+  return notifyActivity(
+    'Stock editado',
+    `${actor} edito el stock de ${cleanProviderName}`
+  );
+}

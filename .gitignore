@@ -43,3 +43,6 @@ serviceAccountKey.json
 # generated native folders
 /ios
 /android
+
+# Claude Code (config local, no va al repo)
+.claude/

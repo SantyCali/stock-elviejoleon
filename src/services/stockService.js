@@ -67,22 +67,3 @@ export async function deleteStockSnapshot(stockId) {
   await deleteDoc(doc(db, 'stocks', stockId));
 }
 
-export async function hasStockLoadedToday(providerId) {
-  try {
-    const latest = await getLatestStockByProvider(providerId);
-    if (!latest || !latest.createdAt) return false;
-
-    const stockDate = latest.createdAt?.toDate
-      ? latest.createdAt.toDate()
-      : new Date(latest.createdAt);
-
-    const today = new Date();
-    return (
-      stockDate.getDate() === today.getDate() &&
-      stockDate.getMonth() === today.getMonth() &&
-      stockDate.getFullYear() === today.getFullYear()
-    );
-  } catch {
-    return false;
-  }
-}

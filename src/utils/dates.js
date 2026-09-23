@@ -68,3 +68,16 @@ export function getTodayKey() {
 
   return `${year}-${month}-${day}`;
 }
+
+// Instante absoluto de la medianoche de hoy en Argentina (UTC-3),
+// para comparar contra los createdAt de Firestore.
+export function getTodayStart() {
+  const today = getArgentinaDate();
+  const utcMidnight = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate()
+  );
+
+  return new Date(utcMidnight - ARGENTINA_OFFSET_HOURS * 60 * 60000);
+}

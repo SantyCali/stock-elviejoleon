@@ -13,8 +13,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
@@ -117,8 +119,27 @@ export async function getUserProfile(uid) {
   return snapshot.data();
 }
 
+export function subscribeUserProfile(uid, onData) {
+  if (!uid) {
+    onData(null);
+    return () => {};
+  }
+
+  return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+    onData(snapshot.exists() ? snapshot.data() : null);
+  });
+}
+
 export function getCurrentUser() {
   return auth.currentUser;
+}
+
+export async function updateUserName(uid, name) {
+  const cleanName = String(name).trim();
+  if (!uid) throw new Error('MISSING_UID');
+  if (!cleanName) throw new Error('MISSING_NAME');
+  await updateDoc(doc(db, 'users', uid), { name: cleanName });
+  return cleanName;
 }
 
 export async function resetPassword(email) {

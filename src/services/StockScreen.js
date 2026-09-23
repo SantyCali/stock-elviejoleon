@@ -144,7 +144,6 @@ export default function StockScreen({ route, navigation }) {
                     <Text style={styles.label}>Hay</Text>
                     <TextInput
                       style={styles.input}
-                      keyboardType="numeric"
                       value={product.hay}
                       onChangeText={(value) => updateHay(product.id, value)}
                     />

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,8 +15,11 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { subscribeProductsByProvider } from '../services/productService';
 import { updateStockSnapshot } from '../services/stockService';
+import { getCurrentUser, getUserProfile } from '../services/authService';
+import { notifyStockEdited } from '../services/activityNotificationService';
 import { COLORS } from '../theme';
 
 function formatDate(createdAt) {
@@ -32,6 +36,7 @@ function formatDate(createdAt) {
 
 export default function EditStockScreen({ route, navigation }) {
   const { stock } = route.params;
+  const insets = useSafeAreaInsets();
 
   const [items, setItems] = useState(() =>
     (stock.items || []).map((item) => ({ ...item }))
@@ -44,12 +49,36 @@ export default function EditStockScreen({ route, navigation }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [addQuantity, setAddQuantity] = useState('');
 
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
   useEffect(() => {
     const unsubscribe = subscribeProductsByProvider(stock.providerId, (products) => {
       setAllProducts(products);
     });
     return unsubscribe;
   }, [stock.providerId]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Tocar fuera: primero baja el teclado, recién después cierra el modal.
+  function handleOverlayPress() {
+    if (keyboardVisible) {
+      Keyboard.dismiss();
+      return;
+    }
+    setAddModalVisible(false);
+  }
 
   // Products not yet in the snapshot
   const availableProducts = useMemo(() => {
@@ -117,6 +146,11 @@ export default function EditStockScreen({ route, navigation }) {
     try {
       setSaving(true);
       await updateStockSnapshot(stock.id, items);
+
+      const currentUser = getCurrentUser();
+      const profile = currentUser ? await getUserProfile(currentUser.uid) : null;
+      notifyStockEdited({ profile, providerName: stock.providerName });
+
       Toast.show({
         type: 'success',
         text1: 'Stock actualizado',
@@ -137,8 +171,8 @@ export default function EditStockScreen({ route, navigation }) {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Info del stock */}
-      <View style={styles.infoBox}>
+      {/* Info del stock — tocarla también baja el teclado */}
+      <Pressable style={styles.infoBox} onPress={Keyboard.dismiss}>
         <View style={styles.infoRow}>
           <View style={styles.infoDot} />
           <Text style={styles.infoProvider}>{stock.providerName}</Text>
@@ -149,11 +183,12 @@ export default function EditStockScreen({ route, navigation }) {
         {!!stock.createdByName && (
           <Text style={styles.infoBy}>Cargado por {stock.createdByName}</Text>
         )}
-      </View>
+      </Pressable>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         {groupedItems.map(({ category, products }) => (
           <View key={category} style={styles.group}>
@@ -169,7 +204,6 @@ export default function EditStockScreen({ route, navigation }) {
                     style={styles.hayInput}
                     value={item.hay}
                     onChangeText={(v) => updateItemHay(item.productId, v)}
-                    keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor={COLORS.textMuted}
                     selectTextOnFocus
@@ -232,7 +266,8 @@ export default function EditStockScreen({ route, navigation }) {
         onRequestClose={() => setAddModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={handleOverlayPress} />
+          <View style={[styles.modalCard, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Agregar producto</Text>
               <Pressable
@@ -292,9 +327,8 @@ export default function EditStockScreen({ route, navigation }) {
                       style={styles.modalInput}
                       value={addQuantity}
                       onChangeText={setAddQuantity}
-                      placeholder="Ej: 5"
+                      placeholder="Ej: 5 packs"
                       placeholderTextColor={COLORS.textMuted}
-                      keyboardType="numeric"
                       autoFocus
                     />
                   </View>

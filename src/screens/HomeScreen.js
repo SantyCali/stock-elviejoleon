@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,11 +11,14 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getProviders } from '../services/providerService';
-import { hasOrderDoneToday, markOrderDoneToday } from '../services/orderService';
-import { hasStockLoadedToday } from '../services/stockService';
+import { getCachedProviders, subscribeProviders } from '../services/providerService';
+import { warmProductsCache } from '../services/productService';
+import { markOrderDoneToday } from '../services/orderService';
+import {
+  markOrderedLocally,
+  subscribeTodayStatus,
+} from '../services/todayStatusService';
 import {
   cancelAllReminders,
   requestNotificationPermissions,
@@ -35,72 +38,95 @@ function normalizeDayName(day) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const [providers, setProviders] = useState([]);
-  const [todayStatus, setTodayStatus] = useState([]); // [{ provider, done }]
-  const [stockLoadedStatus, setStockLoadedStatus] = useState({}); // { [providerId]: boolean }
-  const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState(() => getCachedProviders() || []);
+  const [providersReady, setProvidersReady] = useState(() => !!getCachedProviders());
+  const [orderedIds, setOrderedIds] = useState(() => new Set());
+  const [stockedIds, setStockedIds] = useState(() => new Set());
+  const [statusReady, setStatusReady] = useState(false);
   const [bellVisible, setBellVisible] = useState(false);
 
   const todayName = getTodayName();
   const todayLabel = getTodayLabel();
 
-  // ── Cargar datos y actualizar notificaciones ────────────────────────────────
+  // ── Suscripciones en vivo (pintan de cache al instante) ─────────────────────
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
+  useEffect(() => {
+    // Empieza a traer el catálogo apenas se abre la app, no cuando se toca un
+    // proveedor: así entrar a cualquiera ya no espera a la red.
+    warmProductsCache();
+
+    const unsubscribeProviders = subscribeProviders(
+      (data) => {
+        setProviders(data);
+        setProvidersReady(true);
+      },
+      () => setProvidersReady(true)
+    );
+
+    const unsubscribeStatus = subscribeTodayStatus(({ ordered, stocked, ready }) => {
+      setOrderedIds(ordered);
+      setStockedIds(stocked);
+      if (ready) setStatusReady(true);
+    });
+
+    return () => {
+      unsubscribeProviders();
+      unsubscribeStatus();
+    };
+  }, []);
+
+  // Permisos y push token fuera del camino crítico: no bloquean el primer render.
+  useEffect(() => {
+    requestNotificationPermissions().then((granted) => {
+      if (!granted) return;
+      const currentUser = getCurrentUser();
+      if (currentUser) savePushToken(currentUser.uid);
+    });
+  }, []);
+
+  // ── Datos derivados ────────────────────────────────────────────────────────
+
+  const providersToday = useMemo(() => {
+    const todayNorm = normalizeDayName(todayName);
+    return providers.filter((p) =>
+      (p.days || []).map(normalizeDayName).includes(todayNorm)
+    );
+  }, [providers, todayName]);
+
+  const todayStatus = useMemo(
+    () =>
+      providersToday.map((provider) => ({
+        provider,
+        done: orderedIds.has(provider.id),
+      })),
+    [providersToday, orderedIds]
   );
 
-  async function loadData() {
-    try {
-      setLoading(true);
-      const granted = await requestNotificationPermissions();
-      if (granted) {
-        const currentUser = getCurrentUser();
-        if (currentUser) savePushToken(currentUser.uid);
-      }
+  const pendingStatus = useMemo(
+    () => todayStatus.filter((s) => !s.done),
+    [todayStatus]
+  );
 
-      const data = await getProviders();
-      setProviders(data);
+  const pendingCount = pendingStatus.length;
 
-      const todayNorm = normalizeDayName(todayName);
-      const providersToday = data.filter((p) =>
-        (p.days || []).map(normalizeDayName).includes(todayNorm)
-      );
+  // ── Recordatorios: solo se reprograman si cambió la lista de pendientes ────
 
-      const statusList = await Promise.all(
-        providersToday.map(async (provider) => ({
-          provider,
-          done: await hasOrderDoneToday(provider.id),
-        }))
-      );
+  const lastReminderKey = useRef(null);
 
-      setTodayStatus(statusList);
-      await updateOrderReminders(statusList);
+  useEffect(() => {
+    if (!statusReady || !providersReady) return;
 
-      const stockMap = {};
-      await Promise.all(
-        providersToday.map(async (provider) => {
-          stockMap[provider.id] = await hasStockLoadedToday(provider.id);
-        })
-      );
-      setStockLoadedStatus(stockMap);
-    } catch (error) {
-      console.log('Error cargando proveedores:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+    const pendingNames = pendingStatus.map((s) => s.provider.name);
+    const key = pendingNames.join('|');
+    if (lastReminderKey.current === key) return;
+    lastReminderKey.current = key;
 
-  async function updateOrderReminders(statusList) {
-    const pending = statusList.filter((s) => !s.done);
-    if (pending.length > 0) {
-      await scheduleOrderReminders(pending.map((s) => s.provider.name));
+    if (pendingNames.length > 0) {
+      scheduleOrderReminders(pendingNames);
     } else {
-      await cancelAllReminders();
+      cancelAllReminders();
     }
-  }
+  }, [pendingStatus, statusReady, providersReady]);
 
   function confirmMarkOrderDone(provider) {
     Alert.alert(
@@ -117,13 +143,11 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function handleMarkOrderDone(provider) {
+    // Pinta el verde al instante; Firestore confirma después.
+    markOrderedLocally(provider.id);
+
     try {
       await markOrderDoneToday(provider);
-      const nextStatus = todayStatus.map((status) =>
-        status.provider.id === provider.id ? { ...status, done: true } : status
-      );
-      setTodayStatus(nextStatus);
-      await updateOrderReminders(nextStatus);
     } catch (error) {
       console.log('Error marcando pedido como hecho:', error);
       Alert.alert('Error', 'No se pudo marcar el pedido como hecho.');
@@ -131,16 +155,6 @@ export default function HomeScreen({ navigation }) {
   }
 
   // ── Actualizar header cuando cambia el conteo pendiente ────────────────────
-
-  const pendingCount = useMemo(
-    () => todayStatus.filter((s) => !s.done).length,
-    [todayStatus]
-  );
-
-  const pendingStatus = useMemo(
-    () => todayStatus.filter((s) => !s.done),
-    [todayStatus]
-  );
 
   useEffect(() => {
     navigation.setOptions({
@@ -195,18 +209,9 @@ export default function HomeScreen({ navigation }) {
     setBellVisible(false);
   }
 
-  // ── Datos derivados ────────────────────────────────────────────────────────
-
-  const providersToday = useMemo(() => {
-    const todayNorm = normalizeDayName(todayName);
-    return providers.filter((p) =>
-      (p.days || []).map(normalizeDayName).includes(todayNorm)
-    );
-  }, [providers, todayName]);
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (!providersReady && providers.length === 0) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color={COLORS.accent} />
@@ -243,7 +248,7 @@ export default function HomeScreen({ navigation }) {
       <FlatList
         data={providersToday}
         keyExtractor={(item) => item.id}
-        extraData={{ todayStatus, stockLoadedStatus }}
+        extraData={{ orderedIds, stockedIds, statusReady }}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
@@ -255,9 +260,8 @@ export default function HomeScreen({ navigation }) {
           </View>
         }
         renderItem={({ item }) => {
-          const status = todayStatus.find((s) => s.provider.id === item.id);
-          const done = status?.done ?? null;
-          const stockLoaded = stockLoadedStatus[item.id] ?? false;
+          const done = statusReady ? orderedIds.has(item.id) : null;
+          const stockLoaded = stockedIds.has(item.id);
           const showPink = stockLoaded && done !== true;
           return (
             <Pressable

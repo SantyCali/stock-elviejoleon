@@ -6,6 +6,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   setDoc,
   updateDoc,
@@ -44,10 +45,37 @@ function cleanAliasList(alias) {
 export async function getProviders() {
   const querySnapshot = await getDocs(collection(db, 'providers'));
 
-  return querySnapshot.docs.map((doc) => ({
+  cachedProviders = querySnapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
   }));
+
+  return cachedProviders;
+}
+
+// Última lista conocida: permite pintar la pantalla al instante mientras
+// el listener trae la versión fresca de Firestore.
+let cachedProviders = null;
+
+export function getCachedProviders() {
+  return cachedProviders;
+}
+
+export function subscribeProviders(onData, onError) {
+  return onSnapshot(
+    collection(db, 'providers'),
+    (snapshot) => {
+      cachedProviders = snapshot.docs.map((docItem) => ({
+        id: docItem.id,
+        ...docItem.data(),
+      }));
+      onData(cachedProviders);
+    },
+    (error) => {
+      console.log('Error escuchando proveedores:', error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 export async function createProvider({ name, days = [], frequency = 'semanal', alias = [] }) {

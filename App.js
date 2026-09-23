@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
 import AppNavigator from './src/navigation/AppNavigator';
+import { toastConfig } from './src/components/toastConfig';
 
 const MAX_FONT_SCALE = 1.2;
 
@@ -45,7 +46,7 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <AppNavigator />
-      <Toast />
+      <Toast config={toastConfig} />
     </SafeAreaProvider>
   );
 }

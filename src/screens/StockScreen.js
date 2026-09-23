@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { subscribeProductsByProvider } from '../services/productService';
+import { getCachedProductsByProvider, subscribeProductsByProvider } from '../services/productService';
 import {
   createProduct,
   createStandaloneCategory,
   deleteProduct,
+  getCachedStandaloneCategories,
   moveProductToCategory,
   renameCategory,
   subscribeStandaloneCategories,
@@ -29,6 +30,7 @@ import Toast from 'react-native-toast-message';
 import { createStockSnapshot } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { notifyStockLoaded } from '../services/activityNotificationService';
+import { markStockedLocally } from '../services/todayStatusService';
 import { COLORS } from '../theme';
 
 // Persiste los valores HAY durante la sesión de la app, sobrevive a la navegación.
@@ -93,6 +95,7 @@ export default function StockScreen({ route, navigation }) {
   const [moveProdTarget, setMoveProdTarget] = useState('');
   const [moveProdSaving, setMoveProdSaving] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const [previewMounted, setPreviewMounted] = useState(false);
   const [editPreviewProduct, setEditPreviewProduct] = useState(null);
   const [editPreviewValue, setEditPreviewValue] = useState('');
 
@@ -105,41 +108,38 @@ export default function StockScreen({ route, navigation }) {
   const smallOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    setLoading(true);
-    let productsReady = false;
-    let categoriesReady = false;
     let cancelled = false;
 
-    function finishInitialLoad() {
-      if (!cancelled && productsReady && categoriesReady) {
-        setLoading(false);
-      }
+    function withHayValues(data) {
+      return data.map((item) => ({ ...item, hay: getCached(provider.id, item.id) }));
     }
+
+    // Con el catálogo ya en memoria se pinta sin spinner.
+    const cachedProducts = getCachedProductsByProvider(provider.id);
+    setProducts(cachedProducts ? withHayValues(cachedProducts) : []);
+    setLoading(cachedProducts === null);
+
+    const cachedCategories = getCachedStandaloneCategories(provider.id);
+    if (cachedCategories) setStandaloneCategories(cachedCategories);
 
     const unsubscribeProducts = subscribeProductsByProvider(
       provider.id,
       (data) => {
-        productsReady = true;
-        setProducts(data.map((item) => ({ ...item, hay: getCached(provider.id, item.id) })));
-        finishInitialLoad();
+        if (cancelled) return;
+        setProducts(withHayValues(data));
+        setLoading(false);
       },
       () => {
-        productsReady = true;
-        finishInitialLoad();
+        if (!cancelled) setLoading(false);
       }
     );
 
     const unsubscribeCategories = subscribeStandaloneCategories(
       provider.id,
       (data) => {
-        categoriesReady = true;
-        setStandaloneCategories(data);
-        finishInitialLoad();
+        if (!cancelled) setStandaloneCategories(data);
       },
-      () => {
-        categoriesReady = true;
-        finishInitialLoad();
-      }
+      () => {}
     );
 
     return () => {
@@ -187,6 +187,8 @@ export default function StockScreen({ route, navigation }) {
         items: itemsToSave,
       });
 
+      markStockedLocally(provider.id);
+
       notifyStockLoaded({
         profile,
         providerName: provider.name,
@@ -232,7 +234,16 @@ export default function StockScreen({ route, navigation }) {
       Alert.alert('Ojo', 'Cargá al menos un stock antes de continuar.');
       return;
     }
+    setPreviewMounted(true);
     setPreviewMode(true);
+  }
+
+  // El modal usa animationType="slide" (animación nativa), no el patrón con
+  // Animated.Value de los demás — hay que esperar a que termine para desmontar,
+  // si no se corta el slide-out a la mitad.
+  function closePreview() {
+    setPreviewMode(false);
+    setTimeout(() => setPreviewMounted(false), 320);
   }
 
   function openPreviewEdit(product) {
@@ -547,6 +558,13 @@ export default function StockScreen({ route, navigation }) {
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
+          // Por defecto FlatList arranca renderizando 10 categorías de una (~70
+          // TextInputs). Con 2 alcanza para llenar la pantalla; el resto se va
+          // armando al scrollear. Lo tipeado vive en el estado, así que reciclar
+          // filas no pierde nada.
+          initialNumToRender={2}
+          maxToRenderPerBatch={3}
+          windowSize={7}
           renderItem={({ item, index: categoryIndex }) => (
             <View style={styles.categoryCard}>
 
@@ -663,6 +681,7 @@ export default function StockScreen({ route, navigation }) {
       </View>
 
       {/* ── Modal: agregar artículo (grande, 82%) ──────────────────────────── */}
+      {addModalVisible && (
       <Modal
         visible={addModalVisible}
         transparent
@@ -808,8 +827,10 @@ export default function StockScreen({ route, navigation }) {
           </Animated.View>
         </View>
       </Modal>
+      )}
 
       {/* ── Modal: editar categoría ────────────────────────────────────────── */}
+      {editCatVisible && (
       <Modal
         visible={editCatVisible}
         transparent
@@ -870,8 +891,10 @@ export default function StockScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ── Modal: mover categoría ───────────────────────────────────────── */}
+      {moveCatVisible && (
       <Modal
         visible={moveCatVisible}
         transparent
@@ -942,8 +965,10 @@ export default function StockScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ── Modal: mover artículo a otra categoría ────────────────────────── */}
+      {moveProdVisible && (
       <Modal
         visible={moveProdVisible}
         transparent
@@ -1014,18 +1039,20 @@ export default function StockScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ── Vista previa ──────────────────────────────────────────────────── */}
+      {previewMounted && (
       <Modal
         visible={previewMode}
         animationType="slide"
         statusBarTranslucent
-        onRequestClose={() => setPreviewMode(false)}
+        onRequestClose={closePreview}
       >
         <View style={[styles.container, { paddingTop: insets.top }]}>
           <View style={styles.headerArea}>
             <Pressable
-              onPress={() => setPreviewMode(false)}
+              onPress={closePreview}
               style={styles.previewBackBtn}
             >
               <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
@@ -1043,6 +1070,9 @@ export default function StockScreen({ route, navigation }) {
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            windowSize={7}
             renderItem={({ item: group, index: groupIndex }) => (
               <View style={styles.categoryCard}>
                 <View style={styles.categoryHeader}>
@@ -1144,8 +1174,10 @@ export default function StockScreen({ route, navigation }) {
           </Modal>
         </View>
       </Modal>
+      )}
 
       {/* ── Modal: editar nombre de artículo ──────────────────────────────── */}
+      {editProdVisible && (
       <Modal
         visible={editProdVisible}
         transparent
@@ -1206,6 +1238,7 @@ export default function StockScreen({ route, navigation }) {
           </Animated.View>
         </Pressable>
       </Modal>
+      )}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,9 +16,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { createProvider, getProviders } from '../services/providerService';
-import { hasOrderDoneToday } from '../services/orderService';
+import {
+  createProvider,
+  getCachedProviders,
+  subscribeProviders,
+} from '../services/providerService';
+import { subscribeTodayStatus } from '../services/todayStatusService';
 import { getTodayName } from '../utils/dates';
 import { COLORS } from '../theme';
 
@@ -34,8 +37,8 @@ function normalize(str) {
 }
 
 export default function ProvidersListScreen({ navigation }) {
-  const [providers, setProviders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState(() => getCachedProviders() || []);
+  const [loading, setLoading] = useState(() => !getCachedProviders());
   const [query, setQuery] = useState('');
   const [createVisible, setCreateVisible] = useState(false);
   const [newProviderName, setNewProviderName] = useState('');
@@ -43,37 +46,40 @@ export default function ProvidersListScreen({ navigation }) {
   const [newProviderDays, setNewProviderDays] = useState([]);
   const [newProviderFrequency, setNewProviderFrequency] = useState('semanal');
   const [creating, setCreating] = useState(false);
-  const [doneToday, setDoneToday] = useState(new Set());
+  const [orderedIds, setOrderedIds] = useState(() => new Set());
   const aliasInputRef = useRef(null);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProviders();
-    }, [])
-  );
+  useEffect(() => {
+    const unsubscribeProviders = subscribeProviders(
+      (data) => {
+        setProviders(data);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
 
-  async function loadProviders() {
-    try {
-      setLoading(true);
-      const data = await getProviders();
-      setProviders(data);
+    const unsubscribeStatus = subscribeTodayStatus(({ ordered }) => {
+      setOrderedIds(ordered);
+    });
 
-      const todayNorm = normalize(getTodayName());
-      const todayProviders = data.filter(p =>
-        (p.days || []).map(normalize).includes(todayNorm)
-      );
-      const statusList = await Promise.all(
-        todayProviders.map(async p => ({ id: p.id, done: await hasOrderDoneToday(p.id) }))
-      );
-      setDoneToday(new Set(statusList.filter(s => s.done).map(s => s.id)));
-    } catch (error) {
-      console.log('Error cargando proveedores:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+    return () => {
+      unsubscribeProviders();
+      unsubscribeStatus();
+    };
+  }, []);
+
+  // Solo se marcan en verde los proveedores que reparten hoy.
+  const doneToday = useMemo(() => {
+    const todayNorm = normalize(getTodayName());
+    const ids = new Set();
+    providers.forEach((p) => {
+      const isToday = (p.days || []).map(normalize).includes(todayNorm);
+      if (isToday && orderedIds.has(p.id)) ids.add(p.id);
+    });
+    return ids;
+  }, [providers, orderedIds]);
 
   const filtered = useMemo(() => {
     const q = normalize(query.trim());
