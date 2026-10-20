@@ -62,6 +62,15 @@ export default function PresenceScreen() {
     return unsubscribe;
   }, []);
 
+  // Al abrir la pantalla se actualiza la propia ubicación sin tocar el botón.
+  // Solo sirve para el estado de uno mismo: el de los demás depende de que sus
+  // celulares crucen la geocerca.
+  useEffect(() => {
+    refreshPresenceNow().catch(() => {
+      // sin permisos o sin GPS: queda lo último que se haya registrado
+    });
+  }, []);
+
   async function handleRefresh() {
     try {
       setRefreshing(true);
