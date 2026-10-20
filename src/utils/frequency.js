@@ -30,6 +30,14 @@ function toDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
 // true = mostrarlo hoy. Semanales y cualquier frecuencia desconocida
 // (por ejemplo "humor") se muestran siempre, igual que antes.
 export function isProviderDueToday(provider, now = new Date()) {
@@ -39,6 +47,15 @@ export function isProviderDueToday(provider, now = new Date()) {
   const lastOrderedAt = toDate(provider?.lastOrderedAt);
   if (!lastOrderedAt) return true; // sin historial no se puede inferir el ciclo
 
-  const daysSince = Math.floor((now.getTime() - lastOrderedAt.getTime()) / MS_PER_DAY);
+  // Si el último movimiento es de hoy, no puede ser lo que decida si hoy
+  // correspondía: se mira el anterior. Así pedirlo no lo borra de la lista al
+  // instante, y marcarlo por error tampoco lo hace aparecer cuando no tocaba.
+  const reference = isSameDay(lastOrderedAt, now)
+    ? toDate(provider?.previousOrderedAt)
+    : lastOrderedAt;
+
+  if (!reference) return true;
+
+  const daysSince = Math.floor((now.getTime() - reference.getTime()) / MS_PER_DAY);
   return daysSince >= minDays;
 }

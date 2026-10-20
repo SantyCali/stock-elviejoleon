@@ -93,12 +93,12 @@ export default function HomeScreen({ navigation }) {
       const repartaHoy = (p.days || []).map(normalizeDayName).includes(todayNorm);
       if (!repartaHoy) return false;
 
-      // Un quincenal/mensual se oculta la semana que no le toca, salvo que
-      // alguien ya haya trabajado con él hoy: ahí conviene verlo igual.
-      const yaSeUsoHoy = orderedIds.has(p.id) || stockedIds.has(p.id);
-      return isProviderDueToday(p) || yaSeUsoHoy;
+      // Los quincenales/mensuales se ocultan la semana que no les toca. Que
+      // alguien los haya marcado hoy no los trae de vuelta: isProviderDueToday
+      // ya ignora el movimiento del día para decidirlo.
+      return isProviderDueToday(p);
     });
-  }, [providers, todayName, orderedIds, stockedIds]);
+  }, [providers, todayName]);
 
   const todayStatus = useMemo(
     () =>

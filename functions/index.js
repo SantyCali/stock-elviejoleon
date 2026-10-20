@@ -113,7 +113,17 @@ function isDueToday(provider, now) {
   const lastOrderedAt = provider.lastOrderedAt?.toDate?.();
   if (!lastOrderedAt) return true;
 
-  return Math.floor((now.getTime() - lastOrderedAt.getTime()) / MS_PER_DAY) >= minDays;
+  // Igual que en la app: si el ultimo movimiento es de hoy se mira el anterior,
+  // asi lo que pase hoy no altera si hoy correspondia pedirle.
+  const sameDay =
+    lastOrderedAt.getFullYear() === now.getFullYear() &&
+    lastOrderedAt.getMonth() === now.getMonth() &&
+    lastOrderedAt.getDate() === now.getDate();
+
+  const reference = sameDay ? provider.previousOrderedAt?.toDate?.() : lastOrderedAt;
+  if (!reference) return true;
+
+  return Math.floor((now.getTime() - reference.getTime()) / MS_PER_DAY) >= minDays;
 }
 
 async function getPendingProviderNames(now = new Date()) {
@@ -186,6 +196,20 @@ exports.remindPendingOrders = onSchedule(
 // avisos duplicados: solo salta cuando alguien que no estaba, llega.
 
 const OWNER_EMAIL = 'santipiedrabuena@gmail.com';
+const STALE_PRESENCE_MS = 8 * 60 * 60 * 1000; // igual que en la app
+
+// Un "presente" viejo no significa que la persona estuviera: es un dato que
+// quedo colgado (celular apagado, salida no detectada). Si no se descartara,
+// la proxima llegada real no se veria como un cambio de estado y no avisaria.
+function wasReallyPresent(before) {
+  if (before?.status !== 'presente') return false;
+  if (!before.lastSeen) return false;
+
+  const lastSeen = new Date(before.lastSeen).getTime();
+  if (Number.isNaN(lastSeen)) return false;
+
+  return Date.now() - lastSeen <= STALE_PRESENCE_MS;
+}
 
 // Los nombres de usuario estan duplicados entre cuentas ("santi" vs
 // "santi calivares", y dos cuentas con el mismo mail), asi que los
@@ -214,7 +238,8 @@ exports.notifyArrivalAtStore = onDocumentWritten('presence/{uid}', async (event)
   const after = event.data?.after?.data();
 
   if (!after) return null;
-  if (before?.status === 'presente' || after.status !== 'presente') return null;
+  if (after.status !== 'presente') return null;
+  if (wasReallyPresent(before)) return null; // ya estaba, no es una llegada
 
   const name = after.name || after.username || 'Alguien';
   const role = after.role || 'empleado';

@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -21,7 +22,23 @@ async function touchProviderLastOrdered(providerId) {
   if (!providerId) return;
 
   try {
-    await updateDoc(doc(db, 'providers', providerId), {
+    const providerRef = doc(db, 'providers', providerId);
+    const snapshot = await getDoc(providerRef);
+    const current = snapshot.data()?.lastOrderedAt;
+    const currentDate = current?.toDate ? current.toDate() : null;
+
+    // Se guarda el anterior para poder decidir si hoy tocaba sin que el
+    // movimiento de hoy altere esa cuenta. Si ya hubo uno hoy no se pisa,
+    // porque si no el segundo pedido del dia borraria el historial real.
+    const now = new Date();
+    const alreadyToday =
+      currentDate &&
+      currentDate.getFullYear() === now.getFullYear() &&
+      currentDate.getMonth() === now.getMonth() &&
+      currentDate.getDate() === now.getDate();
+
+    await updateDoc(providerRef, {
+      ...(alreadyToday ? {} : { previousOrderedAt: current ?? null }),
       lastOrderedAt: serverTimestamp(),
     });
   } catch (error) {
