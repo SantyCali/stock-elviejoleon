@@ -261,6 +261,37 @@ exports.notifyArrivalAtStore = onDocumentWritten('presence/{uid}', async (event)
   return null;
 });
 
+// La geocerca solo escribe al entrar y al salir. Si el aviso de salida se
+// pierde (celular apagado, app cerrada por el sistema) la persona queda
+// clavada en "presente" sin nada que la destrabe. Esto limpia de madrugada,
+// cuando con seguridad el local esta cerrado, para que el dia arranque limpio.
+exports.resetPresenceOvernight = onSchedule(
+  {
+    schedule: '0 3 * * *',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  },
+  async () => {
+    const snapshot = await admin.firestore().collection('presence').get();
+    const now = new Date().toISOString();
+
+    const stuck = snapshot.docs.filter((d) => d.data().status !== 'ausente');
+    if (stuck.length === 0) {
+      logger.info('Presencia ya estaba limpia');
+      return;
+    }
+
+    const batch = admin.firestore().batch();
+    stuck.forEach((d) => {
+      batch.set(d.ref, { status: 'ausente', since: null, updatedAt: now }, { merge: true });
+    });
+    await batch.commit();
+
+    logger.info('Presencia reiniciada', {
+      limpiados: stuck.map((d) => d.data().name || d.id),
+    });
+  }
+);
+
 async function sendBroadcast(title, body, data = {}) {
   const tokens = await getExpoPushTokens();
 
