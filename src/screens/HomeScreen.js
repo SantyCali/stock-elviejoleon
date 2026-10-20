@@ -27,6 +27,7 @@ import {
 import { savePushToken } from '../services/pushTokenService';
 import { getCurrentUser } from '../services/authService';
 import { getTodayLabel, getTodayName } from '../utils/dates';
+import { isProviderDueToday } from '../utils/frequency';
 import { COLORS } from '../theme';
 
 function normalizeDayName(day) {
@@ -88,10 +89,17 @@ export default function HomeScreen({ navigation }) {
 
   const providersToday = useMemo(() => {
     const todayNorm = normalizeDayName(todayName);
-    return providers.filter((p) =>
-      (p.days || []).map(normalizeDayName).includes(todayNorm)
-    );
-  }, [providers, todayName]);
+
+    return providers.filter((p) => {
+      const repartaHoy = (p.days || []).map(normalizeDayName).includes(todayNorm);
+      if (!repartaHoy) return false;
+
+      // Un quincenal/mensual se oculta la semana que no le toca, salvo que
+      // alguien ya haya trabajado con él hoy: ahí conviene verlo igual.
+      const yaSeUsoHoy = orderedIds.has(p.id) || stockedIds.has(p.id);
+      return isProviderDueToday(p) || yaSeUsoHoy;
+    });
+  }, [providers, todayName, orderedIds, stockedIds]);
 
   const todayStatus = useMemo(
     () =>

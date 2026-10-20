@@ -11,16 +11,22 @@
       },
       "ios": {
         "simulator": false
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6809581100"
+      }
+    }
   }
 }

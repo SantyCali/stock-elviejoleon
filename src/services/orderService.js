@@ -9,10 +9,26 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { getTodayKey } from '../utils/dates';
+
+// Deja la fecha del último pedido en el proveedor: así la pantalla de inicio
+// puede saber si a un quincenal/mensual le toca hoy sin consultar el historial.
+async function touchProviderLastOrdered(providerId) {
+  if (!providerId) return;
+
+  try {
+    await updateDoc(doc(db, 'providers', providerId), {
+      lastOrderedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    // Que falle esto no debe tumbar el pedido, que ya se guardó.
+    console.log('No se pudo actualizar lastOrderedAt del proveedor:', error);
+  }
+}
 
 export async function createOrder(orderData) {
   const docRef = await addDoc(collection(db, 'orders'), {
@@ -20,6 +36,7 @@ export async function createOrder(orderData) {
     createdAt: serverTimestamp(),
   });
 
+  await touchProviderLastOrdered(orderData.providerId);
   await keepOnlyLastFiveOrdersByProvider(orderData.providerId);
 
   return docRef.id;
@@ -93,6 +110,9 @@ export async function markOrderDoneToday(provider) {
     markedAt: serverTimestamp(),
     type: 'manual',
   });
+
+  // Marcarlo a mano también cierra el ciclo de un quincenal/mensual.
+  await touchProviderLastOrdered(provider.id);
 }
 
 export async function deleteOrder(orderId) {
