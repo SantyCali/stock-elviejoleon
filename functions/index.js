@@ -1,7 +1,7 @@
 const admin = require('firebase-admin');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const logger = require('firebase-functions/logger');
 
@@ -179,6 +179,63 @@ exports.remindPendingOrders = onSchedule(
   }
 );
 
+// ── Aviso de llegada al negocio ──────────────────────────────────────────────
+//
+// Se dispara cuando el documento de presencia pasa a "presente". Como mira la
+// transicion y no el valor, las escrituras repetidas de la ubicacion no generan
+// avisos duplicados: solo salta cuando alguien que no estaba, llega.
+
+const OWNER_EMAIL = 'santipiedrabuena@gmail.com';
+
+// Los nombres de usuario estan duplicados entre cuentas ("santi" vs
+// "santi calivares", y dos cuentas con el mismo mail), asi que los
+// destinatarios se resuelven por id de documento, que si es unico.
+async function getArrivalRecipients(arrivedUid, arrivedRole) {
+  const users = await admin.firestore().collection('users').get();
+
+  const recipients = users.docs.filter((d) => {
+    if (!isExpoPushToken(d.data().pushToken)) return false;
+
+    // El duenio recibe todas las llegadas, incluida la suya propia.
+    const isOwner = String(d.data().email || '').toLowerCase() === OWNER_EMAIL;
+    if (isOwner) return true;
+
+    // Los demas jefes no se avisan a si mismos ni se enteran de las llegadas
+    // de otros jefes: solo de los empleados.
+    if (d.id === arrivedUid) return false;
+    return arrivedRole !== 'jefe' && d.data().role === 'jefe';
+  });
+
+  return recipients.map((d) => d.data().pushToken);
+}
+
+exports.notifyArrivalAtStore = onDocumentWritten('presence/{uid}', async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+
+  if (!after) return null;
+  if (before?.status === 'presente' || after.status !== 'presente') return null;
+
+  const name = after.name || after.username || 'Alguien';
+  const role = after.role || 'empleado';
+
+  const tokens = await getArrivalRecipients(event.params.uid, role);
+  if (tokens.length === 0) {
+    logger.info('Llegada sin destinatarios', { uid: event.params.uid });
+    return null;
+  }
+
+  const result = await sendToTokens(
+    tokens,
+    '🏪 Llegó al negocio',
+    `${name} está en el negocio.`,
+    { type: 'arrival', uid: event.params.uid }
+  );
+
+  logger.info('Aviso de llegada enviado', { name, role, ...result });
+  return null;
+});
+
 async function sendBroadcast(title, body, data = {}) {
   const tokens = await getExpoPushTokens();
 
@@ -216,6 +273,32 @@ async function getExpoPushTokens() {
     .filter(isExpoPushToken);
 
   return Array.from(new Set(tokens));
+}
+
+async function sendToTokens(tokens, title, body, data = {}) {
+  const unique = Array.from(new Set(tokens.filter(isExpoPushToken)));
+  if (unique.length === 0) return { sent: 0, errors: 0 };
+
+  const messages = unique.map((token) => ({
+    to: token,
+    title,
+    body,
+    sound: 'default',
+    priority: 'high',
+    channelId: ANDROID_CHANNEL_ID,
+    data,
+  }));
+
+  let sent = 0;
+  let errors = 0;
+
+  for (let i = 0; i < messages.length; i += PUSH_CHUNK_SIZE) {
+    const result = await sendPushChunk(messages.slice(i, i + PUSH_CHUNK_SIZE));
+    sent += result.sent;
+    errors += result.errors;
+  }
+
+  return { sent, errors };
 }
 
 async function sendPushChunk(messages) {

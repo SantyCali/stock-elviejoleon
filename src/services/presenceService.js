@@ -16,6 +16,7 @@ import {
 } from '../config/storeLocation';
 
 const LOCATION_TASK_NAME = 'el-viejo-leon-presence-task';
+const GEOFENCE_TASK_NAME = 'el-viejo-leon-geofence-task';
 
 const STORAGE_KEYS = {
   uid: 'presence_uid',
@@ -37,36 +38,9 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-async function writePresence(profile, coords, distanceMeters, enteredAtIso) {
-  const now = new Date();
-  const withinRadius = distanceMeters <= STORE_LOCATION.radiusMeters;
-
-  let status = 'ausente';
-  if (withinRadius && enteredAtIso) {
-    const elapsed = now.getTime() - new Date(enteredAtIso).getTime();
-    status = elapsed >= PRESENCE_THRESHOLD_MS ? 'presente' : 'llegando';
-  }
-
-  await setDoc(
-    doc(db, 'presence', profile.uid),
-    {
-      uid: profile.uid,
-      name: profile.name || profile.username || 'Sin nombre',
-      username: profile.username || '',
-      role: profile.role || 'empleado',
-      status,
-      since: withinRadius ? enteredAtIso : null,
-      lastSeen: now.toISOString(),
-      lastLat: coords.latitude,
-      lastLng: coords.longitude,
-      distanceMeters: Math.round(distanceMeters),
-      updatedAt: now.toISOString(),
-    },
-    { merge: true }
-  );
-}
-
-async function processLocation(coords) {
+// Punto único de escritura: lo usan tanto la geocerca (que avisa al entrar y
+// salir) como el monitoreo periódico que quedó de respaldo.
+async function savePresence({ inside, coords = null, distanceMeters = null }) {
   const [uid, name, username, role, storedEnteredAt] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.uid),
     AsyncStorage.getItem(STORAGE_KEYS.name),
@@ -77,6 +51,46 @@ async function processLocation(coords) {
 
   if (!uid) return;
 
+  let enteredAtIso = storedEnteredAt;
+
+  if (inside && !enteredAtIso) {
+    enteredAtIso = new Date().toISOString();
+    await AsyncStorage.setItem(STORAGE_KEYS.enteredAt, enteredAtIso);
+  } else if (!inside && enteredAtIso) {
+    enteredAtIso = null;
+    await AsyncStorage.removeItem(STORAGE_KEYS.enteredAt);
+  }
+
+  const now = new Date();
+  let status = 'ausente';
+  if (inside && enteredAtIso) {
+    const elapsed = now.getTime() - new Date(enteredAtIso).getTime();
+    status = elapsed >= PRESENCE_THRESHOLD_MS ? 'presente' : 'llegando';
+  }
+
+  const payload = {
+    uid,
+    name: name || username || 'Sin nombre',
+    username: username || '',
+    role: role || 'empleado',
+    status,
+    since: inside ? enteredAtIso : null,
+    lastSeen: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+
+  if (coords) {
+    payload.lastLat = coords.latitude;
+    payload.lastLng = coords.longitude;
+  }
+  if (distanceMeters !== null) {
+    payload.distanceMeters = Math.round(distanceMeters);
+  }
+
+  await setDoc(doc(db, 'presence', uid), payload, { merge: true });
+}
+
+async function processLocation(coords) {
   const distanceMeters = getDistanceMeters(
     coords.latitude,
     coords.longitude,
@@ -84,23 +98,11 @@ async function processLocation(coords) {
     STORE_LOCATION.longitude
   );
 
-  const withinRadius = distanceMeters <= STORE_LOCATION.radiusMeters;
-  let enteredAtIso = storedEnteredAt;
-
-  if (withinRadius && !enteredAtIso) {
-    enteredAtIso = new Date().toISOString();
-    await AsyncStorage.setItem(STORAGE_KEYS.enteredAt, enteredAtIso);
-  } else if (!withinRadius && enteredAtIso) {
-    enteredAtIso = null;
-    await AsyncStorage.removeItem(STORAGE_KEYS.enteredAt);
-  }
-
-  await writePresence(
-    { uid, name, username, role },
+  await savePresence({
+    inside: distanceMeters <= STORE_LOCATION.radiusMeters,
     coords,
     distanceMeters,
-    enteredAtIso
-  );
+  });
 }
 
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
@@ -113,6 +115,24 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     await processLocation(last.coords);
   } catch {
     // silencioso — no bloquear el ciclo de ubicación en background
+  }
+});
+
+// La geocerca la vigila el sistema operativo: despierta la app al entrar o
+// salir del radio, incluso con la app cerrada. Es lo que hace que la llegada
+// se detecte sola, sin depender de que alguien abra la app o toque un botón.
+TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
+  if (error) return;
+
+  const eventType = data?.eventType;
+  const isEnter = eventType === Location.GeofencingEventType.Enter;
+  const isExit = eventType === Location.GeofencingEventType.Exit;
+  if (!isEnter && !isExit) return;
+
+  try {
+    await savePresence({ inside: isEnter });
+  } catch {
+    // silencioso — el sistema reintenta en el próximo cruce
   }
 });
 
@@ -146,6 +166,36 @@ export async function ensurePresenceTracking(profile) {
   return status.backgroundGranted;
 }
 
+async function startGeofence() {
+  try {
+    const already = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
+    if (already) return;
+
+    await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, [
+      {
+        identifier: 'negocio',
+        latitude: STORE_LOCATION.latitude,
+        longitude: STORE_LOCATION.longitude,
+        radius: STORE_LOCATION.radiusMeters,
+        notifyOnEnter: true,
+        notifyOnExit: true,
+      },
+    ]);
+  } catch (error) {
+    // Si el equipo no la soporta queda el monitoreo periódico como respaldo.
+    console.log('No se pudo iniciar la geocerca:', error);
+  }
+}
+
+async function stopGeofence() {
+  try {
+    const already = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
+    if (already) await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
+  } catch {
+    // nada que hacer si ya estaba detenida
+  }
+}
+
 export async function startPresenceTracking(profile) {
   if (!profile?.uid) return;
 
@@ -156,6 +206,8 @@ export async function startPresenceTracking(profile) {
 
   const { backgroundGranted } = await getPresencePermissionStatus();
   if (!backgroundGranted) return;
+
+  await startGeofence();
 
   const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(
     LOCATION_TASK_NAME
@@ -177,6 +229,8 @@ export async function startPresenceTracking(profile) {
 }
 
 export async function stopPresenceTracking(uid) {
+  await stopGeofence();
+
   const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(
     LOCATION_TASK_NAME
   );
