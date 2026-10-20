@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { subscribeProductsByProvider } from '../services/productService';
+import { getCachedProductsByProvider, subscribeProductsByProvider } from '../services/productService';
 import { createOrder, getLastOrderByProvider } from '../services/orderService';
 import { getLatestStockByProvider } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
@@ -50,9 +50,6 @@ export default function NewOrderScreen({ route, navigation }) {
   }, [previewMode]);
 
   useEffect(() => {
-    setLoading(true);
-    let productsReady = false;
-    let orderDataReady = false;
     let cancelled = false;
     let latestProducts = [];
 
@@ -70,23 +67,26 @@ export default function NewOrderScreen({ route, navigation }) {
       );
     }
 
-    function finishInitialLoad() {
-      if (!cancelled && productsReady && orderDataReady) {
-        setLoading(false);
-      }
+    // Los productos salen de la cache y se muestran ya. Las columnas "HAY" y
+    // "último pedido" necesitan red, así que se rellenan cuando llegan en vez
+    // de retrasar toda la pantalla: antes se esperaban las dos consultas.
+    const cachedProducts = getCachedProductsByProvider(provider.id);
+    if (cachedProducts) {
+      latestProducts = cachedProducts;
+      mergeProducts(cachedProducts);
     }
+    setLoading(cachedProducts === null);
 
     const unsubscribeProducts = subscribeProductsByProvider(
       provider.id,
       (data) => {
-        productsReady = true;
+        if (cancelled) return;
         latestProducts = data;
-        if (orderDataReady) mergeProducts(data);
-        finishInitialLoad();
+        mergeProducts(data);
+        setLoading(false);
       },
       () => {
-        productsReady = true;
-        finishInitialLoad();
+        if (!cancelled) setLoading(false);
       }
     );
 
@@ -114,21 +114,15 @@ export default function NewOrderScreen({ route, navigation }) {
 
         stockMapRef.current = stockMap;
         lastOrderMapRef.current = lastOrderMap;
-        orderDataReady = true;
 
         setStockLoadedBy(
           latestStock?.createdByName || latestStock?.createdByUsername || null
         );
 
         mergeProducts(latestProducts);
-        finishInitialLoad();
       })
       .catch((error) => {
         console.log('Error cargando datos de pedido:', error);
-        if (cancelled) return;
-        orderDataReady = true;
-        mergeProducts(latestProducts);
-        finishInitialLoad();
       });
 
     return () => {
@@ -319,6 +313,11 @@ export default function NewOrderScreen({ route, navigation }) {
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
+          // Con 2 categorías se llena la pantalla; el resto se arma al scrollear.
+          // Por defecto arrancaba con 10 (~70 campos de texto) antes de pintar.
+          initialNumToRender={2}
+          maxToRenderPerBatch={3}
+          windowSize={7}
           renderItem={({ item, index: categoryIndex }) => (
             <View style={styles.categoryCard}>
               <View style={styles.categoryHeader}>

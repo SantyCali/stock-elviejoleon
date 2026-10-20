@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const logger = require('firebase-functions/logger');
 
 admin.initializeApp();
@@ -65,6 +66,118 @@ exports.notifyProductCreated = onDocumentCreated('products/{productId}', async (
     productId: event.params.productId,
   });
 });
+
+// ── Recordatorios de pedidos pendientes ──────────────────────────────────────
+//
+// Antes los programaba el celular como notificaciones locales, con dos fallas:
+// el texto quedaba congelado (si otro hacia los pedidos despues, seguia avisando
+// de todos) y solo existian si alguien abria la app ese dia. Calcularlos aca, al
+// momento de enviar, arregla las dos cosas.
+
+const ARGENTINA_OFFSET_HOURS = -3;
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const CYCLE_MIN_DAYS = { quincenal: 11, mensual: 24 };
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const REMINDER_START_MINUTES = 9 * 60 + 30; // 9:30
+const REMINDER_END_MINUTES = 14 * 60; // 14:00
+
+function getArgentinaDate(now = new Date()) {
+  return new Date(now.getTime() + ARGENTINA_OFFSET_HOURS * 60 * 60000);
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+function getTodayKeyAr(now = new Date()) {
+  const t = getArgentinaDate(now);
+  const month = String(t.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(t.getUTCDate()).padStart(2, '0');
+  return `${t.getUTCFullYear()}-${month}-${day}`;
+}
+
+function getTodayStartAr(now = new Date()) {
+  const t = getArgentinaDate(now);
+  const utcMidnight = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  return new Date(utcMidnight - ARGENTINA_OFFSET_HOURS * 60 * 60000);
+}
+
+function isDueToday(provider, now) {
+  const minDays = CYCLE_MIN_DAYS[normalizeText(provider.frequency)];
+  if (!minDays) return true;
+
+  const lastOrderedAt = provider.lastOrderedAt?.toDate?.();
+  if (!lastOrderedAt) return true;
+
+  return Math.floor((now.getTime() - lastOrderedAt.getTime()) / MS_PER_DAY) >= minDays;
+}
+
+async function getPendingProviderNames(now = new Date()) {
+  const todayName = DAY_NAMES[getArgentinaDate(now).getUTCDay()];
+  const todayKey = getTodayKeyAr(now);
+  const todayStart = getTodayStartAr(now);
+
+  const [providersSnap, ordersSnap, manualSnap] = await Promise.all([
+    admin.firestore().collection('providers').get(),
+    admin.firestore().collection('orders').where('createdAt', '>=', todayStart).get(),
+    admin.firestore().collection('manualOrderCompletions').where('dateKey', '==', todayKey).get(),
+  ]);
+
+  const done = new Set();
+  ordersSnap.docs.forEach((d) => d.data().providerId && done.add(d.data().providerId));
+  manualSnap.docs.forEach((d) => d.data().providerId && done.add(d.data().providerId));
+
+  return providersSnap.docs
+    .filter((d) => {
+      const provider = d.data();
+      const deliversToday = (provider.days || []).map(normalizeText).includes(todayName);
+      return deliversToday && isDueToday(provider, now) && !done.has(d.id);
+    })
+    .map((d) => d.data().name || d.id);
+}
+
+exports.remindPendingOrders = onSchedule(
+  {
+    schedule: '0,30 9-14 * * *',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  },
+  async () => {
+    const now = new Date();
+    const ar = getArgentinaDate(now);
+    const minutes = ar.getUTCHours() * 60 + ar.getUTCMinutes();
+
+    // El cron dispara 9:00 y 14:30 de mas; esos dos se descartan.
+    if (minutes < REMINDER_START_MINUTES - 5 || minutes > REMINDER_END_MINUTES + 5) {
+      logger.info('Fuera de la ventana de recordatorios', { minutes });
+      return;
+    }
+
+    const pending = await getPendingProviderNames(now);
+
+    if (pending.length === 0) {
+      logger.info('Sin pedidos pendientes, no se envia nada');
+      return;
+    }
+
+    const body =
+      pending.length === 1
+        ? `Falta el pedido de ${pending[0]}.`
+        : `Faltan pedidos de: ${pending.join(', ')}.`;
+
+    try {
+      const result = await sendBroadcast('🦁 El Viejo León — Pedidos pendientes', body, {
+        type: 'pending_orders',
+      });
+      logger.info('Recordatorio enviado', { pending: pending.length, ...result });
+    } catch (error) {
+      logger.error('No se pudo enviar el recordatorio', error);
+    }
+  }
+);
 
 async function sendBroadcast(title, body, data = {}) {
   const tokens = await getExpoPushTokens();

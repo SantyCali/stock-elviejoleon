@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,6 @@ import {
 import {
   cancelAllReminders,
   requestNotificationPermissions,
-  scheduleOrderReminders,
 } from '../services/notificationService';
 import { savePushToken } from '../services/pushTokenService';
 import { getCurrentUser } from '../services/authService';
@@ -117,24 +116,13 @@ export default function HomeScreen({ navigation }) {
 
   const pendingCount = pendingStatus.length;
 
-  // ── Recordatorios: solo se reprograman si cambió la lista de pendientes ────
-
-  const lastReminderKey = useRef(null);
-
+  // Los recordatorios ahora los calcula y envía el servidor al momento de
+  // mandarlos, así llegan aunque nadie abra la app y nunca nombran un pedido
+  // que ya se hizo. Acá solo se limpian los locales que puedan haber quedado
+  // programados por versiones anteriores, para que no lleguen duplicados.
   useEffect(() => {
-    if (!statusReady || !providersReady) return;
-
-    const pendingNames = pendingStatus.map((s) => s.provider.name);
-    const key = pendingNames.join('|');
-    if (lastReminderKey.current === key) return;
-    lastReminderKey.current = key;
-
-    if (pendingNames.length > 0) {
-      scheduleOrderReminders(pendingNames);
-    } else {
-      cancelAllReminders();
-    }
-  }, [pendingStatus, statusReady, providersReady]);
+    cancelAllReminders();
+  }, []);
 
   function confirmMarkOrderDone(provider) {
     Alert.alert(
