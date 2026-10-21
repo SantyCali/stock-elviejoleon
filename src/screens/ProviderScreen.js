@@ -27,6 +27,7 @@ import { getCachedProductsByProvider, subscribeProductsByProvider } from '../ser
 import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, getCachedStandaloneCategories, moveProductToCategory, renameCategory, subscribeStandaloneCategories, updateProductName } from '../services/productAdminService';
 import { deleteProviderById, updateProviderDetails } from '../services/providerService';
 import { subscribeTodayStatus } from '../services/todayStatusService';
+import { prefetchOrderPrefill } from '../services/orderPrefillService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { COLORS } from '../theme';
 
@@ -212,6 +213,10 @@ export default function ProviderScreen({ route, navigation }) {
       setOrderDoneToday(ordered.has(currentProvider.id));
       setStockLoadedToday(stocked.has(currentProvider.id));
     });
+
+    // Se va trayendo de fondo lo que necesita la pantalla de pedido, que es la
+    // que sigue en el camino: así al tocar "Hacer pedido" ya está en memoria.
+    prefetchOrderPrefill(currentProvider.id);
 
     const currentUser = getCurrentUser();
     if (currentUser) {

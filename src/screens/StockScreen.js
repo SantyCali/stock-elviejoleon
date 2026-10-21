@@ -31,6 +31,7 @@ import { createStockSnapshot } from '../services/stockService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import { notifyStockLoaded } from '../services/activityNotificationService';
 import { markStockedLocally } from '../services/todayStatusService';
+import { invalidateOrderPrefill } from '../services/orderPrefillService';
 import { COLORS } from '../theme';
 
 // Persiste los valores HAY durante la sesión de la app, sobrevive a la navegación.
@@ -188,6 +189,8 @@ export default function StockScreen({ route, navigation }) {
       });
 
       markStockedLocally(provider.id);
+      // La columna HAY de la pantalla de pedido tiene que reflejar este stock.
+      invalidateOrderPrefill(provider.id);
 
       notifyStockLoaded({
         profile,

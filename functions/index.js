@@ -197,6 +197,10 @@ exports.remindPendingOrders = onSchedule(
 
 const OWNER_EMAIL = 'santipiedrabuena@gmail.com';
 const STALE_PRESENCE_MS = 8 * 60 * 60 * 1000; // igual que en la app
+// Periodo sin repetir el aviso de la misma persona. Una hora corta de raiz las
+// rafagas y el parpadeo del GPS en el borde del radio, pero sigue avisando si
+// alguien se va y vuelve de verdad mas tarde.
+const ARRIVAL_COOLDOWN_MS = 60 * 60 * 1000;
 
 // Un "presente" viejo no significa que la persona estuviera: es un dato que
 // quedo colgado (celular apagado, salida no detectada). Si no se descartara,
@@ -243,6 +247,31 @@ exports.notifyArrivalAtStore = onDocumentWritten('presence/{uid}', async (event)
 
   const name = after.name || after.username || 'Alguien';
   const role = after.role || 'empleado';
+
+  // Mirar el estado anterior no alcanza: la ubicacion se escribe desde varios
+  // lados (geocerca, monitoreo de respaldo, la pantalla al abrirse) y si caen
+  // juntas, todas ven el mismo "antes" y todas avisan. Pasó: tres avisos del
+  // mismo evento en dos segundos.
+  //
+  // Esto reserva el aviso de forma atomica: de varias ejecuciones simultaneas
+  // una sola se lo lleva, y durante el periodo de espera no se repite aunque
+  // el GPS haga entrar y salir a la persona del radio.
+  const claimRef = admin.firestore().collection('arrivalNotifications').doc(event.params.uid);
+  const claimed = await admin.firestore().runTransaction(async (tx) => {
+    const snapshot = await tx.get(claimRef);
+    const previous = snapshot.data()?.notifiedAt;
+    const last = previous ? new Date(previous).getTime() : 0;
+
+    if (Date.now() - last < ARRIVAL_COOLDOWN_MS) return false;
+
+    tx.set(claimRef, { notifiedAt: new Date().toISOString(), name });
+    return true;
+  });
+
+  if (!claimed) {
+    logger.info('Aviso de llegada omitido: ya se aviso hace poco', { name });
+    return null;
+  }
 
   const tokens = await getArrivalRecipients(event.params.uid, role);
   if (tokens.length === 0) {

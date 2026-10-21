@@ -13,8 +13,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCachedProductsByProvider, subscribeProductsByProvider } from '../services/productService';
-import { createOrder, getLastOrderByProvider } from '../services/orderService';
-import { getLatestStockByProvider } from '../services/stockService';
+import { createOrder } from '../services/orderService';
+import {
+  getCachedOrderPrefill,
+  invalidateOrderPrefill,
+  prefetchOrderPrefill,
+} from '../services/orderPrefillService';
 import { getCurrentUser, getUserProfile } from '../services/authService';
 import Toast from 'react-native-toast-message';
 import { notifyOrderFinished } from '../services/activityNotificationService';
@@ -67,9 +71,16 @@ export default function NewOrderScreen({ route, navigation }) {
       );
     }
 
-    // Los productos salen de la cache y se muestran ya. Las columnas "HAY" y
-    // "último pedido" necesitan red, así que se rellenan cuando llegan en vez
-    // de retrasar toda la pantalla: antes se esperaban las dos consultas.
+    // HAY y "último pedido" ya vienen precargados desde la pantalla anterior,
+    // así que se aplican antes del primer dibujo y aparecen junto con los
+    // productos en vez de ir completándose después.
+    const cachedPrefill = getCachedOrderPrefill(provider.id);
+    if (cachedPrefill) {
+      stockMapRef.current = cachedPrefill.stockMap;
+      lastOrderMapRef.current = cachedPrefill.lastOrderMap;
+      setStockLoadedBy(cachedPrefill.stockLoadedBy);
+    }
+
     const cachedProducts = getCachedProductsByProvider(provider.id);
     if (cachedProducts) {
       latestProducts = cachedProducts;
@@ -90,40 +101,18 @@ export default function NewOrderScreen({ route, navigation }) {
       }
     );
 
-    Promise.all([
-      getLatestStockByProvider(provider.id),
-      getLastOrderByProvider(provider.id),
-    ])
-      .then(([latestStock, lastOrder]) => {
-        if (cancelled) return;
+    // Si no estaban precargados (se entró directo, o la precarga aún no
+    // terminó) se traen acá y se aplican al llegar.
+    if (!cachedPrefill) {
+      prefetchOrderPrefill(provider.id).then((prefill) => {
+        if (cancelled || !prefill) return;
 
-        const stockMap = {};
-        const lastOrderMap = {};
-
-        if (latestStock?.items?.length) {
-          latestStock.items.forEach((item) => {
-            stockMap[item.productId] = item.hay;
-          });
-        }
-
-        if (lastOrder?.items?.length) {
-          lastOrder.items.forEach((item) => {
-            lastOrderMap[item.productId] = item.pedir;
-          });
-        }
-
-        stockMapRef.current = stockMap;
-        lastOrderMapRef.current = lastOrderMap;
-
-        setStockLoadedBy(
-          latestStock?.createdByName || latestStock?.createdByUsername || null
-        );
-
+        stockMapRef.current = prefill.stockMap;
+        lastOrderMapRef.current = prefill.lastOrderMap;
+        setStockLoadedBy(prefill.stockLoadedBy);
         mergeProducts(latestProducts);
-      })
-      .catch((error) => {
-        console.log('Error cargando datos de pedido:', error);
       });
+    }
 
     return () => {
       cancelled = true;
@@ -187,6 +176,8 @@ export default function NewOrderScreen({ route, navigation }) {
       });
 
       markOrderedLocally(provider.id);
+      // El "último pedido" que quedó cacheado ya no es el último.
+      invalidateOrderPrefill(provider.id);
 
       notifyOrderFinished({
         profile,
