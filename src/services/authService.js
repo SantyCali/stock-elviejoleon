@@ -119,6 +119,15 @@ export async function getUserProfile(uid) {
   return snapshot.data();
 }
 
+// El perfil se guarda en memoria apenas se conoce: las pantallas lo necesitan
+// para saber si el usuario es jefe, y pedirlo de nuevo en cada una hacía que a
+// veces no llegara a tiempo y el botón de "Hacer pedido" no apareciera.
+let cachedProfile = null;
+
+export function getCachedUserProfile() {
+  return cachedProfile;
+}
+
 export function subscribeUserProfile(uid, onData) {
   if (!uid) {
     onData(null);
@@ -126,7 +135,8 @@ export function subscribeUserProfile(uid, onData) {
   }
 
   return onSnapshot(doc(db, 'users', uid), (snapshot) => {
-    onData(snapshot.exists() ? snapshot.data() : null);
+    cachedProfile = snapshot.exists() ? snapshot.data() : null;
+    onData(cachedProfile);
   });
 }
 

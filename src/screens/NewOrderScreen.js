@@ -42,6 +42,7 @@ export default function NewOrderScreen({ route, navigation }) {
   const [editPreviewValue, setEditPreviewValue] = useState('');
   const [pendingShareOrder, setPendingShareOrder] = useState(null);
   const [stockLoadedBy, setStockLoadedBy] = useState(null);
+  const [prefillReady, setPrefillReady] = useState(false);
   const stockMapRef = useRef({});
   const lastOrderMapRef = useRef({});
 
@@ -80,6 +81,7 @@ export default function NewOrderScreen({ route, navigation }) {
       lastOrderMapRef.current = cachedPrefill.lastOrderMap;
       setStockLoadedBy(cachedPrefill.stockLoadedBy);
     }
+    setPrefillReady(!!cachedPrefill);
 
     const cachedProducts = getCachedProductsByProvider(provider.id);
     if (cachedProducts) {
@@ -105,12 +107,15 @@ export default function NewOrderScreen({ route, navigation }) {
     // terminó) se traen acá y se aplican al llegar.
     if (!cachedPrefill) {
       prefetchOrderPrefill(provider.id).then((prefill) => {
-        if (cancelled || !prefill) return;
+        if (cancelled) return;
 
-        stockMapRef.current = prefill.stockMap;
-        lastOrderMapRef.current = prefill.lastOrderMap;
-        setStockLoadedBy(prefill.stockLoadedBy);
-        mergeProducts(latestProducts);
+        if (prefill) {
+          stockMapRef.current = prefill.stockMap;
+          lastOrderMapRef.current = prefill.lastOrderMap;
+          setStockLoadedBy(prefill.stockLoadedBy);
+          mergeProducts(latestProducts);
+        }
+        setPrefillReady(true);
       });
     }
 
@@ -213,15 +218,21 @@ export default function NewOrderScreen({ route, navigation }) {
     }
   }
 
+  // Mientras no llegaron los datos no se puede afirmar que nadie cargó stock:
+  // eso es distinto de no saberlo todavía, y decirlo mal puede hacer pedir de
+  // más o de menos.
   function renderHay(item) {
-    if (item.hay === null || item.hay === undefined)
+    if (item.hay === null || item.hay === undefined) {
+      if (!prefillReady) return '—';
       return `${stockLoadedBy || 'Nadie'} todavía no puso stock`;
+    }
     return String(item.hay);
   }
 
   function renderUltimoPedido(item) {
-    if (item.ultimoPedido === null || item.ultimoPedido === undefined)
-      return 'No hay registro';
+    if (item.ultimoPedido === null || item.ultimoPedido === undefined) {
+      return prefillReady ? 'No hay registro' : '—';
+    }
     return String(item.ultimoPedido);
   }
 

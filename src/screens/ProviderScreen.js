@@ -28,7 +28,11 @@ import { createStandaloneCategory, deleteCategoryByProvider, deleteProduct, getC
 import { deleteProviderById, updateProviderDetails } from '../services/providerService';
 import { subscribeTodayStatus } from '../services/todayStatusService';
 import { prefetchOrderPrefill } from '../services/orderPrefillService';
-import { getCurrentUser, getUserProfile } from '../services/authService';
+import {
+  getCachedUserProfile,
+  getCurrentUser,
+  subscribeUserProfile,
+} from '../services/authService';
 import { COLORS } from '../theme';
 
 const MAX_FONT_SCALE = 1.2;
@@ -124,7 +128,9 @@ export default function ProviderScreen({ route, navigation }) {
   const [currentProvider, setCurrentProvider] = useState(provider);
   const [products, setProducts] = useState(() => getCachedProductsByProvider(provider.id) || []);
   const [loading, setLoading] = useState(() => getCachedProductsByProvider(provider.id) === null);
-  const [userRole, setUserRole] = useState(null);
+  // Arranca con el perfil que ya está en memoria: así el botón aparece de una
+  // en vez de esperar a que vuelva la consulta.
+  const [userRole, setUserRole] = useState(() => getCachedUserProfile()?.role || null);
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [deletingId, setDeletingId] = useState(null);
   const [orderDoneToday, setOrderDoneToday] = useState(false);
@@ -218,23 +224,22 @@ export default function ProviderScreen({ route, navigation }) {
     // que sigue en el camino: así al tocar "Hacer pedido" ya está en memoria.
     prefetchOrderPrefill(currentProvider.id);
 
+    // El rol decide si se ve "Hacer pedido". Se escucha en vivo en vez de
+    // pedirlo una sola vez: si la primera lectura tarda o falla, antes quedaba
+    // en null para siempre y el botón no aparecía nunca.
     const currentUser = getCurrentUser();
-    if (currentUser) {
-      getUserProfile(currentUser.uid)
-        .then((profile) => {
-          if (cancelled) return;
-          setUserRole(profile?.role || null);
+    const unsubscribeProfile = currentUser
+      ? subscribeUserProfile(currentUser.uid, (profile) => {
+          if (!cancelled) setUserRole(profile?.role || null);
         })
-        .catch((error) => {
-          console.log('Error cargando perfil del usuario:', error);
-        });
-    }
+      : () => {};
 
     return () => {
       cancelled = true;
       unsubscribeProducts();
       unsubscribeCategories();
       unsubscribeStatus();
+      unsubscribeProfile();
     };
   }, [currentProvider.id]);
 

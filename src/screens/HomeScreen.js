@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { getCachedProviders, subscribeProviders } from '../services/providerService';
 import { warmProductsCache } from '../services/productService';
+import { prefetchOrderPrefill } from '../services/orderPrefillService';
 import { markOrderDoneToday } from '../services/orderService';
 import {
   markOrderedLocally,
@@ -99,6 +100,13 @@ export default function HomeScreen({ navigation }) {
       return isProviderDueToday(p);
     });
   }, [providers, todayName]);
+
+  // Se traen de fondo los datos de pedido de los proveedores de hoy, que son
+  // los que se van a tocar. Son ~5 KB cada uno y dan segundos de ventaja:
+  // alcanza aunque se entre y se toque "Hacer pedido" de corrido.
+  useEffect(() => {
+    providersToday.forEach((provider) => prefetchOrderPrefill(provider.id));
+  }, [providersToday]);
 
   const todayStatus = useMemo(
     () =>
